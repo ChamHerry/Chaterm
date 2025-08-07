@@ -55,29 +55,6 @@
             <a-radio value="close">{{ $t('user.watermarkClose') }}</a-radio>
           </a-radio-group>
         </a-form-item>
-        <a-form-item
-          :label="$t('user.telemetry')"
-          class="user_my-ant-form-item"
-        >
-          <a-radio-group
-            v-model:value="userConfig.telemetry"
-            class="custom-radio-group"
-            @change="updateTelemetry"
-          >
-            <a-radio value="enabled">{{ $t('user.telemetryEnabled') }}</a-radio>
-            <a-radio value="disabled">{{ $t('user.telemetryDisabled') }}</a-radio>
-          </a-radio-group>
-        </a-form-item>
-        <a-form-item
-          class="telemetry-description-item"
-          :label-col="{ span: 0 }"
-          :wrapper-col="{ span: 24 }"
-        >
-          <div
-            class="telemetry-description"
-            v-html="$t('user.telemetryDescription')"
-          ></div>
-        </a-form-item>
       </a-form>
     </a-card>
   </div>
@@ -85,7 +62,6 @@
 
 <script setup>
 import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
-import 'xterm/css/xterm.css'
 import { notification } from 'ant-design-vue'
 import { userConfigStore } from '@/services/userConfigStoreService'
 import { userConfigStore as configStore } from '@/store/userConfigStore'
@@ -98,8 +74,7 @@ const { locale } = useI18n()
 const userConfig = ref({
   language: 'zh-CN',
   watermark: 'open',
-  theme: 'dark',
-  telemetry: 'enabled'
+  theme: 'dark'
 })
 
 const loadSavedConfig = async () => {
@@ -130,8 +105,7 @@ const saveConfig = async () => {
     const configToStore = {
       language: userConfig.value.language,
       watermark: userConfig.value.watermark,
-      theme: userConfig.value.theme,
-      telemetry: userConfig.value.telemetry
+      theme: userConfig.value.theme
     }
     await userConfigStore.saveConfig(configToStore)
     eventBus.emit('updateWatermark', configToStore.watermark)
@@ -179,23 +153,6 @@ const changeTheme = async () => {
     console.error('Failed to change theme:', error)
     notification.error({
       message: '主题切换失败',
-      description: '请稍后重试'
-    })
-  }
-}
-
-const updateTelemetry = async () => {
-  try {
-    await window.api.sendToMain({
-      type: 'telemetrySetting',
-      telemetrySetting: userConfig.value.telemetry
-    })
-
-    await saveConfig()
-  } catch (error) {
-    console.error('Failed to change telemetry setting:', error)
-    notification.error({
-      message: '遥测设置更新失败',
       description: '请稍后重试'
     })
   }
@@ -333,38 +290,5 @@ const updateTelemetry = async () => {
 .checkbox-md :deep(.ant-checkbox-inner) {
   width: 20px;
   height: 20px;
-}
-
-.telemetry-description-item {
-  margin-top: -15px;
-  margin-bottom: 14px;
-}
-
-.telemetry-description-item :deep(.ant-form-item-control) {
-  margin-left: 0 !important;
-  max-width: 100% !important;
-}
-
-.telemetry-description {
-  font-size: 12px;
-  color: var(--text-color-secondary);
-  line-height: 1.4;
-  opacity: 0.8;
-  text-align: left;
-  margin: 0;
-  margin-left: 20px;
-  padding: 0;
-  word-wrap: break-word;
-}
-
-.telemetry-description a {
-  color: #1890ff;
-  text-decoration: none;
-  transition: color 0.3s;
-}
-
-.telemetry-description a:hover {
-  color: #40a9ff;
-  text-decoration: underline;
 }
 </style>
