@@ -1,95 +1,175 @@
+// fileTransfer.spec.ts
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-//  Force mock the global api before importing any code ---
-vi.stubGlobal('api', {
-  onTransferProgress: vi.fn()
-})
-
-describe('fileTransfer.ts Frontend Logic Tests', () => {
-  let transferModule: any
-  let progressCallback: any
-
-  beforeEach(async () => {
+describe('fileTransfer.ts', () => {
+  beforeEach(() => {
     vi.useFakeTimers()
-    vi.clearAllMocks()
-
-    // Capture the callback function registered by initTransferListener ---
-    vi.mocked((window.api as any).onTransferProgress).mockImplementation((cb) => {
-      progressCallback = cb
-    })
-
-    // Dynamically import the business module to ensure it reads the stubbed api above ---
-    transferModule = await import('../fileTransfer')
-
-    // Reset reactive data
-    transferModule.transferTasks.value = {}
-
-    // Initialize the transfer listener
-    transferModule.initTransferListener()
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    vi.resetModules() // Clear module cache to ensure top-level variables are reloaded for the next test
+    vi.restoreAllMocks()
   })
 
-  it('should correctly create a download task and sanitize paths on first progress update', () => {
-    // Trigger callback: simulate data sent from the backend
-    progressCallback({
-      id: 1,
-      taskKey: 'task-1',
-      remotePath: '///home/user//file.txt'.replace(/\/+/g, '/'),
-      bytes: 100,
-      total: 1000,
-      type: 'download'
-    })
+  const setup = async () => {
+    let progressCb: ((payload: any) => void) | undefined
+    ;(window as any).api = {
+      onTransferProgress: (cb: any) => {
+        progressCb = cb
+      }
+    }
 
-    const task = transferModule.transferTasks.value['task-1']
-    expect(task).toBeDefined()
-    expect(task.remotePath).toBe('/home/user/file.txt') // Verify path sanitization regex
-    expect(task.progress).toBe(10)
-    expect(transferModule.downloadList.value.length).toBe(1)
-  })
+    vi.resetModules()
+    const mod = await import('../fileTransfer')
+    mod.transferTasks.value = {}
 
-  it('should correctly calculate speed in KB/s', () => {
-    progressCallback({
-      id: 1,
-      taskKey: 'speed-test',
-      remotePath: 'test.zip',
+    mod.ensureTransferListener()
+    expect(progressCb).toBeTypeOf('function')
+
+    return { mod, progressCb: progressCb! }
+  }
+
+  it('creates task on first progress payload and normalizes path', async () => {
+    const { mod, progressCb } = await setup()
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+
+    progressCb({
+      taskKey: 'k1',
+      type: 'download',
       bytes: 0,
-      total: 10000,
-      type: 'upload'
+      total: 100,
+      remotePath: 'C:\\\\foo\\\\bar.txt'
     })
 
-    // Simulate 1 second passing and 1024 bytes transferred
-    vi.advanceTimersByTime(1001)
-    progressCallback({
-      id: 1,
-      taskKey: 'speed-test',
-      remotePath: 'test.zip',
-      bytes: 1024,
-      total: 10000,
-      type: 'upload'
-    })
-
-    const task = transferModule.transferTasks.value['speed-test']
-    expect(task.speed).toBe('1.00 KB/s')
+    const task = mod.transferTasks.value['k1']
+    expect(task).toBeTruthy()
+    expect(task.name).toBe('bar.txt')
+    expect(task.remotePath).toBe('C:/foo/bar.txt') // \\+ => /
+    expect(task.progress).toBe(0)
+    expect(mod.downloadList.value.map((t: any) => t.taskKey)).toEqual(['k1'])
   })
 
-  it('should automatically remove the task 3 seconds after reaching 100%', () => {
-    progressCallback({
-      id: 1,
-      taskKey: 'done',
-      remotePath: 'done.txt',
+  it('sets speed to scanning when stage=scanning', async () => {
+    const { mod, progressCb } = await setup()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+
+    progressCb({
+      taskKey: 'k2',
+      type: 'upload',
+      bytes: 10,
+      total: 100,
+      remotePath: '/a/b.bin',
+      stage: 'scanning'
+    })
+
+    expect(mod.transferTasks.value['k2'].speed).toBe('scanning')
+    expect(mod.uploadList.value.length).toBe(1)
+  })
+
+  it('updates speed only when >= 1s passed (KB/s or MB/s branch) and progress calc', async () => {
+    const { mod, progressCb } = await setup()
+
+    // t0
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+    progressCb({
+      taskKey: 'k3',
+      type: 'download',
+      bytes: 0,
+      total: 4096,
+      remotePath: '/x/y.dat'
+    })
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.500Z'))
+    progressCb({
+      taskKey: 'k3',
+      type: 'download',
+      bytes: 1024,
+      total: 4096,
+      remotePath: '/x/y.dat'
+    })
+    const s1 = mod.transferTasks.value['k3'].speed
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:02.000Z'))
+    progressCb({
+      taskKey: 'k3',
+      type: 'download',
+      bytes: 3072,
+      total: 4096,
+      remotePath: '/x/y.dat'
+    })
+
+    const task = mod.transferTasks.value['k3']
+    expect(task.progress).toBe(Math.round((3072 / 4096) * 100))
+    expect(task.speed).not.toBe(s1)
+    expect(task.speed.includes('KB/s') || task.speed.includes('MB/s')).toBe(true)
+  })
+
+  it('auto marks success when progress=100 and status=running; then deletes after 2500ms', async () => {
+    const { mod, progressCb } = await setup()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+
+    progressCb({
+      taskKey: 'k4',
+      type: 'download',
       bytes: 100,
       total: 100,
-      type: 'download'
+      remotePath: '/done.txt',
+      status: 'running'
     })
 
-    expect(transferModule.transferTasks.value['done']).toBeDefined()
+    expect(mod.transferTasks.value['k4'].status).toBe('success')
 
-    // Fast-forward 3 seconds
-    vi.advanceTimersByTime(3000)
-    expect(transferModule.transferTasks.value['done']).toBeUndefined()
+    vi.advanceTimersByTime(2499)
+    expect(mod.transferTasks.value['k4']).toBeTruthy()
+
+    vi.advanceTimersByTime(2)
+    expect(mod.transferTasks.value['k4']).toBeUndefined()
+  })
+
+  it('deletes on explicit success after 2500ms; deletes on failed/error after 8000ms', async () => {
+    const { mod, progressCb } = await setup()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+
+    progressCb({ taskKey: 'k5', type: 'upload', bytes: 1, total: 10, remotePath: '/a.txt' })
+    progressCb({ taskKey: 'k5', type: 'upload', bytes: 10, total: 10, remotePath: '/a.txt', status: 'success' })
+
+    vi.advanceTimersByTime(2500)
+    expect(mod.transferTasks.value['k5']).toBeUndefined()
+
+    progressCb({ taskKey: 'k6', type: 'download', bytes: 1, total: 10, remotePath: '/b.txt' })
+    progressCb({ taskKey: 'k6', type: 'download', bytes: 2, total: 10, remotePath: '/b.txt', status: 'failed' })
+
+    vi.advanceTimersByTime(7999)
+    expect(mod.transferTasks.value['k6']).toBeTruthy()
+    vi.advanceTimersByTime(2)
+    expect(mod.transferTasks.value['k6']).toBeUndefined()
+
+    progressCb({ taskKey: 'k7', type: 'download', bytes: 1, total: 10, remotePath: '/c.txt' })
+    progressCb({ taskKey: 'k7', type: 'download', bytes: 2, total: 10, remotePath: '/c.txt', status: 'error' })
+
+    vi.advanceTimersByTime(8000)
+    expect(mod.transferTasks.value['k7']).toBeUndefined()
+  })
+
+  it('r2rGroups groups by fromHost/fromId and toHost/toId', async () => {
+    const { mod, progressCb } = await setup()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+
+    progressCb({
+      taskKey: 'k8',
+      type: 'r2r',
+      bytes: 1,
+      total: 10,
+      remotePath: '/x.txt',
+      fromHost: 'user@192.168.1.2:22',
+      toHost: 'root@10.0.0.9:22'
+    })
+
+    const keys = Object.keys(mod.r2rGroups.value)
+    expect(keys.length).toBe(1)
+    expect(keys[0]).toContain('→')
+    expect(mod.r2rGroups.value[keys[0]][0].taskKey).toBe('k8')
   })
 })
