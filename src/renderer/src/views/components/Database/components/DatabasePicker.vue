@@ -24,12 +24,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { DatabaseTreeNode } from '../types'
+import { findConnectionByAssetId } from '@/store/databaseWorkspaceStore'
 
 /**
- * Database picker for the SQL workbench toolbar. Locates the connection whose
- * `meta.assetId` matches the provided `assetId` and exposes its child database
- * node names. Empty when no connection is chosen or the connection has not
- * loaded databases yet.
+ * Database picker for the SQL workbench toolbar. Locates the connection
+ * whose `meta.assetId` matches the provided `assetId` (recursively so
+ * connections inside nested groups are found) and exposes its child
+ * database node names. Empty when no connection is chosen or the
+ * connection has not loaded databases yet.
  */
 const props = defineProps<{
   modelValue?: string
@@ -43,15 +45,9 @@ const emit = defineEmits<{
 
 const options = computed(() => {
   if (!props.assetId) return []
-  for (const group of props.tree) {
-    for (const conn of group.children ?? []) {
-      if (conn.type !== 'connection') continue
-      const meta = conn.meta as { assetId?: string } | undefined
-      if (meta?.assetId !== props.assetId) continue
-      return (conn.children ?? []).filter((c) => c.type === 'database').map((c) => c.name)
-    }
-  }
-  return []
+  const conn = findConnectionByAssetId(props.tree, props.assetId)
+  if (!conn) return []
+  return (conn.children ?? []).filter((c) => c.type === 'database').map((c) => c.name)
 })
 
 const onChange = (e: Event) => {
