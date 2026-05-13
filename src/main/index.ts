@@ -19,12 +19,11 @@ mark('chaterm/main/didEarlyMigration')
 
 import { app, shell, BrowserWindow, ipcMain, session, net, protocol } from 'electron'
 import path, { join } from 'path'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { electronApp } from '@electron-toolkit/utils'
 import { is } from '@electron-toolkit/utils'
 import * as fs from 'fs/promises'
-import { startDataSync } from './storage/data_sync/index'
-import type { SyncController as DataSyncController } from './storage/data_sync/core/SyncController'
-import { getChatermDbPathForUser, getCurrentUserId, setMainWindowWebContents } from './storage/db/connection'
+import { getCurrentUserId, setMainWindowWebContents } from './storage/db/connection'
 import { migrateCnUserDataOnFirstLaunch } from './storage/editionDataMigration'
 
 // Set environment variables
@@ -51,8 +50,7 @@ import { getTaskMetadata, saveTaskTitle, saveTaskFavorite, getTaskList } from '.
 import { createMainWindow, type WindowCreationResult } from './windowManager'
 import { registerUpdater } from './updater'
 import { setupPluginIpc } from './plugin/pluginIpc'
-import { telemetryService, checkIsFirstLaunch, getMacAddress } from './agent/services/telemetry/TelemetryService'
-import { envelopeEncryptionService } from './storage/data_sync/envelope_encryption/service'
+import { telemetryService, checkIsFirstLaunch } from './agent/services/telemetry/TelemetryService'
 import { versionPromptService } from './version/versionPromptService'
 
 import * as fsSync from 'fs'
@@ -71,11 +69,18 @@ import {
 import { getPluginDetailsByName, getLocalizedStrings, getUserLanguage } from './plugin/pluginDetails'
 import { capabilityRegistry } from './ssh/capabilityRegistry'
 import { getActualTheme, loadUserTheme } from './themeManager'
-import { getLoginBaseUrl, getEdition, getProtocolPrefix, getProtocolName } from './config/edition'
+import { getEdition, getProtocolPrefix, getProtocolName, getYixinSsoConfig } from './config/edition'
+import {
+  buildYixinLoginUrl,
+  buildYixinLoopbackCallbackUrl,
+  buildYixinServiceUrl,
+  createLocalYixinUserInfo,
+  createYixinState,
+  validateYixinTicket
+} from './auth/yixinSso'
 import { TelemetrySetting } from '@shared/TelemetrySetting'
-import { registerKnowledgeBaseHandlers, initKbSearchManager, closeKbSearchManager } from './services/knowledgebase'
+import { registerKnowledgeBaseHandlers, initKbSearchManager } from './services/knowledgebase'
 import { registerStageChatAttachmentHandlers } from './services/agent/stageChatAttachment'
-import { startKbSync, stopKbSync } from './services/knowledgebase/sync'
 import { setupInteractionIpcHandlers } from './agent/services/interaction-detector/ipc-handlers'
 import type { WebviewMessage } from '@shared/WebviewMessage'
 import type { SkillMetadata } from '@shared/skills'
@@ -206,9 +211,13 @@ let forceQuit = false
 let autoCompleteService: autoCompleteDatabaseService
 let chatermDbService: ChatermDatabaseService
 let controller: Controller
-let dataSyncController: DataSyncController | null = null
-let chatSyncScheduler: import('./storage/chat_sync/services/ChatSyncScheduler').ChatSyncScheduler | null = null
 let pendingXshellWakeups: XshellWakeupPayload[] = []
+let yixinCallbackServer: Server | null = null
+let yixinCallbackTimeout: NodeJS.Timeout | null = null
+let yixinCallbackSessionId = 0
+
+const YIXIN_CALLBACK_PATH = '/auth/callback'
+const YIXIN_CALLBACK_TIMEOUT_MS = 10 * 60 * 1000
 
 let winReadyResolve
 let winReady = new Promise((resolve) => (winReadyResolve = resolve))
@@ -621,24 +630,6 @@ app.on('before-quit', async () => {
       logger.info('Controller disposed successfully.')
     } catch (error) {
       logger.error('Error during controller disposal', { error: error })
-    }
-  }
-  if (dataSyncController) {
-    try {
-      await dataSyncController.destroy()
-      dataSyncController = null
-      logger.info('Data sync controller disposed successfully.')
-    } catch (error) {
-      logger.error('Error during data sync controller disposal', { error: error })
-    }
-  }
-  if (chatSyncScheduler) {
-    try {
-      chatSyncScheduler.destroy()
-      chatSyncScheduler = null
-      logger.info('Chat sync scheduler disposed successfully.')
-    } catch (error) {
-      logger.error('Error during chat sync scheduler disposal', { error: error })
     }
   }
 })
@@ -1142,32 +1133,11 @@ function setupIPC(): void {
       // Load and apply user theme configuration
       const dbTheme = await loadUserTheme(chatermDbService)
 
-      // Sync authentication info, ensure completion before data sync starts
-      try {
-        // Get user authentication info and set it to encryption service
-        const ctmToken = await event.sender.executeJavaScript("localStorage.getItem('ctm-token')")
-        if (ctmToken && ctmToken !== 'guest_token') {
-          logger.info(`Setting authentication info for user ${targetUserId}...`)
-          envelopeEncryptionService.setAuthInfo(ctmToken, targetUserId.toString())
-          logger.info(`Authentication info set completed for user ${targetUserId}`)
-        } else {
-          logger.warn(`No valid authentication token found for user ${targetUserId}`)
-        }
-
-        // User switch completed, data sync will be re-initialized by renderer process
-        if (isUserSwitch) {
-          logger.info(`User switch detected: ${previousUserId} -> ${targetUserId}, cleaning up chat sync scheduler`)
-          if (chatSyncScheduler) {
-            chatSyncScheduler.destroy()
-            chatSyncScheduler = null
-            logger.info('Chat sync scheduler destroyed during user switch')
-          }
-        }
-      } catch (error) {
-        logger.warn('Exception setting authentication info', { value: error })
-        if (isUserSwitch) {
-          logger.info(`Authentication info setting failed, user switch: ${previousUserId} -> ${targetUserId}`)
-        }
+      if (isUserSwitch) {
+        logger.info('User switch detected; cloud sync runtime is disabled in YiXin-only mode', {
+          previousUserId,
+          targetUserId
+        })
       }
 
       // Reload skill states after user login (skills are loaded but states need user DB)
@@ -1546,213 +1516,6 @@ function setupIPC(): void {
       return
     }
     return null
-  })
-
-  // Data sync start/stop
-  ipcMain.handle('data-sync:set-enabled', async (_evt, enabled: boolean) => {
-    try {
-      const uid = getCurrentUserId()
-      if (!uid) {
-        throw new Error('User ID is required')
-      }
-      const dataSyncPolicyEnabled = parsePolicyEnabled(process.env.CHATERM_DATA_SYNC_ENABLED)
-      const resolvedEnabled = dataSyncPolicyEnabled === false ? false : enabled
-
-      if (resolvedEnabled) {
-        if (!dataSyncController) {
-          const dbPath = getChatermDbPathForUser(uid)
-          logger.info(`Starting data sync service for user ${uid}...`)
-          const instance = await startDataSync(dbPath)
-          dataSyncController = instance
-        }
-
-        // Enable sync
-        const syncStateManager = dataSyncController.getSyncStateManager()
-        if (syncStateManager) {
-          syncStateManager.enableSync(uid)
-        }
-        startKbSync()
-      } else {
-        // Disable sync
-        if (dataSyncController) {
-          const syncStateManager = dataSyncController.getSyncStateManager()
-          if (syncStateManager) {
-            syncStateManager.disableSync()
-          }
-
-          logger.info('Stopping data sync service...')
-          await stopKbSync()
-          closeKbSearchManager()
-          await dataSyncController.destroy()
-          dataSyncController = null
-          logger.info('Data sync service stopped')
-        }
-      }
-      return { success: true, enabled: resolvedEnabled, managedByPolicy: dataSyncPolicyEnabled === false }
-    } catch (e: any) {
-      logger.warn('Failed to handle data-sync:set-enabled', { error: e?.message || String(e) })
-      return { success: false, error: e?.message || String(e) }
-    }
-  })
-
-  // Get user sync status
-  ipcMain.handle('data-sync:get-user-status', async () => {
-    try {
-      const uid = getCurrentUserId()
-      if (!uid) {
-        return { success: false, error: 'User ID is required' }
-      }
-
-      if (!dataSyncController) {
-        return {
-          success: true,
-          data: {
-            userId: uid,
-            enabled: false,
-            state: { state: 'disabled', enabled: false },
-            hasController: false,
-            fullSyncTimer: null
-          }
-        }
-      }
-
-      const syncStateManager = dataSyncController.getSyncStateManager()
-      const syncStatus = syncStateManager ? syncStateManager.getCurrentStatus() : null
-
-      // Get full sync timer status
-      let fullSyncTimerStatus: any = null
-      try {
-        fullSyncTimerStatus = dataSyncController.getFullSyncTimerStatus()
-      } catch (error) {
-        logger.warn('Failed to get full sync timer status', { value: error })
-      }
-
-      return {
-        success: true,
-        data: {
-          userId: uid,
-          enabled: syncStatus?.enabled || false,
-          state: syncStatus,
-          hasController: true,
-          fullSyncTimer: fullSyncTimerStatus
-        }
-      }
-    } catch (e: any) {
-      logger.warn('Failed to get user sync status', { error: e?.message || String(e) })
-      return { success: false, error: e?.message || String(e) }
-    }
-  })
-
-  // Execute full sync immediately
-  ipcMain.handle('data-sync:full-sync-now', async () => {
-    try {
-      if (!dataSyncController) {
-        return { success: false, error: 'Data sync controller not initialized' }
-      }
-
-      const result = await dataSyncController.fullSyncNow()
-      return { success: result }
-    } catch (e: any) {
-      logger.warn('Failed to execute manual full sync', { error: e?.message || String(e) })
-      return { success: false, error: e?.message || String(e) }
-    }
-  })
-
-  // Update full sync interval
-  ipcMain.handle('data-sync:update-full-sync-interval', async (_evt, intervalHours: number) => {
-    try {
-      if (!dataSyncController) {
-        return { success: false, error: 'Data sync controller not initialized' }
-      }
-
-      if (intervalHours <= 0) {
-        return { success: false, error: 'Interval must be greater than 0 hours' }
-      }
-
-      dataSyncController.updateFullSyncInterval(intervalHours)
-      return { success: true }
-    } catch (e: any) {
-      logger.warn('Failed to update full sync interval', { error: e?.message || String(e) })
-      return { success: false, error: e?.message || String(e) }
-    }
-  })
-
-  // ==================== Chat Sync V2 IPC Handlers ====================
-
-  ipcMain.handle('chat-sync:set-enabled', async (_evt, enabled: boolean) => {
-    try {
-      if (enabled) {
-        if (!chatSyncScheduler) {
-          const { ChatSnapshotStore, ChatSyncApiClient, ChatSyncEngine, ChatSyncScheduler } = await import('./storage/chat_sync/index')
-          const uid = getCurrentUserId()
-          if (!uid) throw new Error('User ID is required for chat sync')
-
-          const dbService = await ChatermDatabaseService.getInstance()
-
-          // Reuse the persistent device ID from data_sync (based on motherboard/machine ID)
-          const { getDeviceId } = await import('./storage/data_sync/config/devideId')
-          const deviceId = getDeviceId()
-
-          // Initialize the snapshot store
-          const store = ChatSnapshotStore.getInstance()
-          store.initialize(dbService, deviceId)
-
-          // Initialize the API client with real auth token from ChatermAuthAdapter
-          const { getSyncUrl } = await import('./config/edition')
-          const { chatermAuthAdapter } = await import('./storage/data_sync/envelope_encryption/services/auth')
-          const apiClient = new ChatSyncApiClient({
-            baseUrl: getSyncUrl(),
-            getAuthToken: async () => {
-              return chatermAuthAdapter.getAuthToken()
-            },
-            deviceId,
-            platform: 'desktop'
-          })
-
-          // Initialize the sync engine
-          const engine = new ChatSyncEngine(apiClient, dbService, store)
-
-          // Initialize the scheduler
-          chatSyncScheduler = new ChatSyncScheduler(engine)
-          await chatSyncScheduler.enable()
-        }
-      } else {
-        if (chatSyncScheduler) {
-          chatSyncScheduler.destroy()
-          chatSyncScheduler = null
-        }
-      }
-      return { success: true }
-    } catch (e: any) {
-      logger.warn('Failed to handle chat-sync:set-enabled', { error: e?.message || String(e) })
-      return { success: false, error: e?.message || String(e) }
-    }
-  })
-
-  ipcMain.handle('chat-sync:get-status', async () => {
-    if (!chatSyncScheduler) {
-      return { success: true, data: { enabled: false } }
-    }
-    return { success: true, data: chatSyncScheduler.getStatus() }
-  })
-
-  ipcMain.handle('chat-sync:sync-now', async () => {
-    if (!chatSyncScheduler) {
-      return { success: false, error: 'Chat sync not enabled' }
-    }
-    try {
-      await chatSyncScheduler.syncNow()
-      return { success: true }
-    } catch (e: any) {
-      return { success: false, error: e?.message || String(e) }
-    }
-  })
-
-  ipcMain.handle('chat-sync:set-ai-tab-visible', async (_evt, visible: boolean) => {
-    if (chatSyncScheduler) {
-      chatSyncScheduler.setAiTabVisible(visible)
-    }
-    return { success: true }
   })
 
   // Open browser window
@@ -3170,6 +2933,211 @@ if (process.platform === 'linux') {
   })
 }
 
+const getAuthTargetWindow = (): BrowserWindow | null => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow
+  }
+  return BrowserWindow.getAllWindows()[0] || null
+}
+
+const focusAuthTargetWindow = (targetWindow: BrowserWindow): void => {
+  if (targetWindow.isMinimized()) {
+    targetWindow.restore()
+  }
+  targetWindow.focus()
+}
+
+const closeYixinCallbackServer = (): void => {
+  if (yixinCallbackTimeout) {
+    clearTimeout(yixinCallbackTimeout)
+    yixinCallbackTimeout = null
+  }
+
+  const server = yixinCallbackServer
+  yixinCallbackServer = null
+  if (server) {
+    server.close((error) => {
+      if (error) {
+        logger.warn('Failed to close YiXin SSO callback server', {
+          error: error instanceof Error ? { name: error.name, message: error.message } : String(error)
+        })
+      }
+    })
+  }
+}
+
+const escapeHtml = (value: string): string =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
+const writeYixinCallbackPage = (response: ServerResponse, title: string, message: string): void => {
+  response.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"
+  })
+  response.end(`<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 48px; color: #1f2328; }
+      .card { max-width: 560px; margin: 0 auto; padding: 32px; border: 1px solid #d0d7de; border-radius: 12px; }
+      h1 { margin: 0 0 12px; font-size: 22px; }
+      p { margin: 0; line-height: 1.6; color: #57606a; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+    </div>
+  </body>
+</html>`)
+}
+
+const sendYixinLoginError = (targetWindow: BrowserWindow, error: string): void => {
+  targetWindow.webContents.send('external-login-error', { error })
+  focusAuthTargetWindow(targetWindow)
+}
+
+const sendYixinLoginSuccess = (targetWindow: BrowserWindow, userInfo: ReturnType<typeof createLocalYixinUserInfo>): void => {
+  targetWindow.webContents.send('external-login-success', {
+    userInfo,
+    method: 'yixin'
+  })
+  focusAuthTargetWindow(targetWindow)
+}
+
+const handleYixinLoopbackCallback = async (
+  request: IncomingMessage,
+  response: ServerResponse,
+  options: {
+    sessionId: number
+    state: string
+    serviceUrl: string
+  }
+): Promise<void> => {
+  const requestUrl = new URL(request.url || '/', 'http://127.0.0.1')
+  if (requestUrl.pathname !== YIXIN_CALLBACK_PATH) {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+    response.end('Not Found')
+    return
+  }
+
+  if (request.method !== 'GET') {
+    response.writeHead(405, { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8' })
+    response.end('Method Not Allowed')
+    return
+  }
+
+  response.once('finish', closeYixinCallbackServer)
+
+  if (options.sessionId !== yixinCallbackSessionId) {
+    writeYixinCallbackPage(response, '登录失败', '登录会话已失效，请返回 Chaterm 重新发起易信登录。')
+    return
+  }
+
+  const targetWindow = getAuthTargetWindow()
+  if (!targetWindow) {
+    writeYixinCallbackPage(response, '登录失败', '未找到可接收登录结果的 Chaterm 窗口，请重新打开应用后再试。')
+    return
+  }
+
+  const callbackState = requestUrl.searchParams.get('state')
+  const callbackError = requestUrl.searchParams.get('error')
+  if (callbackError) {
+    const decodedError = decodeURIComponent(callbackError)
+    sendYixinLoginError(targetWindow, decodedError)
+    writeYixinCallbackPage(response, '登录失败', decodedError)
+    return
+  }
+
+  if (!callbackState || callbackState !== options.state) {
+    sendYixinLoginError(targetWindow, 'Invalid state parameter')
+    writeYixinCallbackPage(response, '登录失败', '登录状态校验失败，请返回 Chaterm 重新发起易信登录。')
+    return
+  }
+
+  const ticket = requestUrl.searchParams.get('ticket')
+  if (!ticket) {
+    sendYixinLoginError(targetWindow, 'Missing YiXin SSO ticket')
+    writeYixinCallbackPage(response, '登录失败', '易信登录回调缺少 ticket，请返回 Chaterm 重试。')
+    return
+  }
+
+  try {
+    const yixinUser = await validateYixinTicket(getYixinSsoConfig(), ticket, options.serviceUrl, (validateUrl) => net.fetch(validateUrl))
+    const userInfo = createLocalYixinUserInfo(yixinUser)
+    global.authState = ''
+    global.authServiceUrl = ''
+    sendYixinLoginSuccess(targetWindow, userInfo)
+    logger.info('YiXin SSO login succeeded, waiting for renderer process...', { event: 'login.yixin.success' })
+    writeYixinCallbackPage(response, '登录成功', '易信登录已完成，请返回 Chaterm 继续使用。')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'YiXin SSO validation failed'
+    global.authState = ''
+    global.authServiceUrl = ''
+    logger.error('Failed to validate YiXin SSO ticket', {
+      error: error instanceof Error ? { name: error.name, message: error.message } : String(error)
+    })
+    sendYixinLoginError(targetWindow, message)
+    writeYixinCallbackPage(response, '登录失败', message)
+  }
+}
+
+const startYixinLoopbackCallbackServer = async (): Promise<{ authUrl: string; serviceUrl: string; state: string }> => {
+  closeYixinCallbackServer()
+
+  const state = createYixinState()
+  const sessionId = ++yixinCallbackSessionId
+  let serviceUrl = ''
+
+  const server = createServer((request, response) => {
+    void handleYixinLoopbackCallback(request, response, {
+      sessionId,
+      state,
+      serviceUrl
+    })
+  })
+
+  return new Promise((resolve, reject) => {
+    server.once('error', (error) => {
+      if (yixinCallbackServer === server) {
+        yixinCallbackServer = null
+      }
+      reject(error)
+    })
+
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close()
+        reject(new Error('Failed to start YiXin SSO callback server'))
+        return
+      }
+
+      const callbackUrl = buildYixinLoopbackCallbackUrl(address.port, YIXIN_CALLBACK_PATH)
+      serviceUrl = buildYixinServiceUrl(callbackUrl, state)
+      const authUrl = buildYixinLoginUrl(getYixinSsoConfig(), serviceUrl)
+
+      yixinCallbackServer = server
+      global.authState = state
+      global.authServiceUrl = serviceUrl
+      yixinCallbackTimeout = setTimeout(() => {
+        if (sessionId === yixinCallbackSessionId) {
+          global.authState = ''
+          global.authServiceUrl = ''
+          logger.warn('YiXin SSO callback server timed out', { event: 'login.yixin.callback.timeout' })
+          closeYixinCallbackServer()
+        }
+      }, YIXIN_CALLBACK_TIMEOUT_MS)
+
+      resolve({ authUrl, serviceUrl, state })
+    })
+  })
+}
+
 // Process protocol redirection
 const handleProtocolRedirect = async (url: string) => {
   // Get main window
@@ -3187,6 +3155,12 @@ const handleProtocolRedirect = async (url: string) => {
       if (authStateCookie && authStateCookie.length > 0) {
         const authState = JSON.parse(authStateCookie[0].value)
         const originalWindowId = authState.windowId
+        if (authState.state && !global.authState) {
+          global.authState = authState.state
+        }
+        if (authState.serviceUrl) {
+          global.authServiceUrl = authState.serviceUrl
+        }
 
         // Try to find original window
         const originalWindow = BrowserWindow.fromId(originalWindowId)
@@ -3208,33 +3182,67 @@ const handleProtocolRedirect = async (url: string) => {
     return
   }
 
-  // Parse token and user info from URL
+  // Parse URL parameters
   const urlObj = new URL(url)
-  const userInfo = urlObj.searchParams.get('userInfo')
-  const method = urlObj.searchParams.get('method')
 
-  if (userInfo) {
-    try {
-      // Send data to renderer process
-      targetWindow.webContents.send('external-login-success', {
-        userInfo: JSON.parse(userInfo),
-        method: method
-      })
+  // Validate state parameter for CSRF protection
+  const callbackState = urlObj.searchParams.get('state')
+  if (callbackState && global.authState && callbackState !== global.authState) {
+    logger.warn('State mismatch in auth callback, possible CSRF attack')
+    targetWindow.webContents.send('external-login-error', { error: 'Invalid state parameter' })
+    if (targetWindow.isMinimized()) targetWindow.restore()
+    targetWindow.focus()
+    return
+  }
+  // Consume state (one-time use)
+  if (global.authState) {
+    global.authState = ''
+  }
 
-      // Ensure window is visible and focused
-      if (targetWindow.isMinimized()) {
-        targetWindow.restore()
-      }
+  // Check for error response
+  const error = urlObj.searchParams.get('error')
+  if (error) {
+    logger.error('Auth callback returned error', { error: decodeURIComponent(error) })
+    targetWindow.webContents.send('external-login-error', { error: decodeURIComponent(error) })
+    if (targetWindow.isMinimized()) targetWindow.restore()
+    targetWindow.focus()
+    return
+  }
+
+  // Format 0: YiXin CAS SSO — validate service ticket locally through YiXin CAS.
+  const ticket = urlObj.searchParams.get('ticket')
+  if (ticket) {
+    if (!callbackState) {
+      targetWindow.webContents.send('external-login-error', { error: 'Missing state parameter' })
+      if (targetWindow.isMinimized()) targetWindow.restore()
       targetWindow.focus()
+      return
+    }
 
-      // After external login succeeds, check if data sync service needs to be restarted
-      // Note: We cannot directly get user ID here because renderer process hasn't finished login logic
-      // So we handle data sync restart through init-user-database after renderer process finishes login
-      logger.info('External login succeeded, waiting for renderer process to handle user initialization...')
-    } catch (error) {
-      logger.error('Failed to process external login data', { error: error })
+    try {
+      const serviceUrl = global.authServiceUrl || buildYixinServiceUrl(`${getProtocolPrefix()}auth/callback`, callbackState)
+      global.authServiceUrl = ''
+      const yixinUser = await validateYixinTicket(getYixinSsoConfig(), ticket, serviceUrl, (validateUrl) => net.fetch(validateUrl))
+      const userInfo = createLocalYixinUserInfo(yixinUser)
+      targetWindow.webContents.send('external-login-success', {
+        userInfo,
+        method: 'yixin'
+      })
+      if (targetWindow.isMinimized()) targetWindow.restore()
+      targetWindow.focus()
+      logger.info('YiXin SSO login succeeded, waiting for renderer process...', { event: 'login.yixin.success' })
+      return
+    } catch (err) {
+      global.authServiceUrl = ''
+      logger.error('Failed to validate YiXin SSO ticket', { error: err instanceof Error ? { name: err.name, message: err.message } : String(err) })
+      targetWindow.webContents.send('external-login-error', { error: err instanceof Error ? err.message : 'YiXin SSO validation failed' })
+      if (targetWindow.isMinimized()) targetWindow.restore()
+      targetWindow.focus()
+      return
     }
   }
+
+  targetWindow.webContents.send('external-login-error', { error: 'Unsupported YiXin SSO callback' })
 }
 
 const dispatchXshellWakeupToRenderer = (payload: XshellWakeupPayload) => {
@@ -3355,65 +3363,29 @@ ipcMain.handle('xshell-wakeup:consume-pending', async () => {
 })
 
 // Add IPC handler after creating Window function
-ipcMain.handle('open-external-login', async () => {
+const openYixinLoginHandler = async () => {
   try {
-    // Generate a random state value for security verification
-    const state = Math.random().toString(36).substring(2)
-    // Store status values for subsequent verification
-    global.authState = state
+    const { authUrl } = await startYixinLoopbackCallbackServer()
 
-    // Get MAC address
-    const macAddress = getMacAddress()
+    logger.info('[Login] Opening YiXin SSO', { event: 'login.yixin.open', edition: getEdition() })
 
-    // Get local plugin versions
-    let localPluginsEncoded = ''
-    try {
-      const localPlugins = await getAllPluginVersions()
-      const localPluginsJson = JSON.stringify(localPlugins)
-      localPluginsEncoded = encodeURIComponent(localPluginsJson)
-    } catch (error) {
-      logger.error('Failed to get plugin versions', { error: error })
-      localPluginsEncoded = encodeURIComponent(JSON.stringify({}))
-    }
-
-    // Build login URL based on edition configuration (no IP detection)
-    const loginBaseUrl = getLoginBaseUrl()
-    const protocolPrefix = getProtocolPrefix()
-    const protocolName = getProtocolName()
-    const externalLoginUrl = `${loginBaseUrl}/login?client_id=${protocolName}&state=${state}&redirect_uri=${protocolPrefix}auth/callback&mac_address=${encodeURIComponent(macAddress)}&local_plugins=${localPluginsEncoded}`
-
-    logger.info('[Login] Opening external login', { event: 'login.external.open', edition: getEdition(), loginBaseUrl })
-
-    // On Linux platform, save state to local storage for new instances to access
-    if (process.platform === 'linux') {
-      try {
-        // Save current window ID for callback to find the correct window
-        const windowId = mainWindow.id
-        await session.defaultSession.cookies.set({
-          url: COOKIE_URL,
-          name: 'chaterm_auth_state',
-          value: JSON.stringify({ state, windowId }),
-          expirationDate: Date.now() / 1000 + 600 // 10 minutes expiry
-        })
-      } catch (error) {
-        logger.error('Failed to save auth state', { error: error })
-      }
-    }
-
-    // Open external login page
-    await shell.openExternal(externalLoginUrl)
+    await shell.openExternal(authUrl)
     return { success: true }
   } catch (error) {
-    logger.error('Failed to open external login page', { error: error })
+    logger.error('Failed to open YiXin SSO page', { error: error instanceof Error ? { name: error.name, message: error.message } : String(error) })
     return { success: false, error: error instanceof Error ? error.message : String(error) }
   }
-})
+}
+
+ipcMain.handle('open-external-login', openYixinLoginHandler)
+ipcMain.handle('open-yixin-login', openYixinLoginHandler)
 
 // Global type declarations
 declare global {
   namespace NodeJS {
     interface Global {
       authState: string
+      authServiceUrl: string
     }
   }
 }

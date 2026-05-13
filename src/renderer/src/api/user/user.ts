@@ -1,254 +1,89 @@
-import request from '@/utils/request'
+const legacyApiRemoved = (name: string): Promise<any> => Promise.reject(new Error(`${name} was removed in YiXin-only local mode`))
 
-// import authRequest from '@/utils/authRequest'
-
-interface ApiResponse<T> {
-  code: number
-  data: T
-  Message?: string
+export function sendEmailCode(_params?: unknown) {
+  return legacyApiRemoved('sendEmailCode')
 }
 
-type ApiResponsePromise<T> = Promise<ApiResponse<T>>
-
-interface LoginResponse {
-  token: string
-  // Other user information
+export function emailLogin(_params?: unknown) {
+  return legacyApiRemoved('emailLogin')
 }
 
-const urls = {
-  sayHello: '/user',
-  userLogin: '/user/login-pwd',
-  userLogOut: '/user/login-out',
-  getUser: '/user/info',
-  userQuickCommand: '/user/quick-command',
-  userQuickCommandInfo: '/user/quick-command/info',
-  aliasUpdateTerm: '/term-api/alias/update',
-  aliasRefreshTerm: '/term-api/alias/refresh',
-  ssoToBearerToken: '/user/login-sso',
-  sendEmailCode: '/user/login-email/send-code',
-  emailLogin: '/user/login-email',
-  sendMobileCode: '/user/login-mobile/send-code',
-  mobileLogin: '/user/login-mobile',
-  updateUser: '/user/info',
-  changePassword: '/user/password',
-  checkUserDevice: '/user/check-device',
-  sendEmailBindCode: '/user/bind-email/send-code',
-  verifyAndBindEmail: '/user/bind-email/verify',
-  sendMobileBindCode: '/user/bind-mobile/send-code',
-  verifyAndBindMobile: '/user/bind-mobile/verify',
-  updateAvatar: '/user/avatar/update',
-  getTrustedDevices: '/user/trusted-devices',
-  revokeTrustedDevice: '/user/trusted-devices/revoke',
-  deactivateAccount: '/user/account/deactivate'
-}
-export function sendEmailCode(params) {
-  return request({
-    method: 'post',
-    url: urls.sendEmailCode,
-    data: params
-  })
+export function sendMobileCode(_params?: unknown) {
+  return legacyApiRemoved('sendMobileCode')
 }
 
-export function emailLogin(params) {
-  return request({
-    method: 'post',
-    url: urls.emailLogin,
-    data: params
-  })
+export function mobileLogin(_params?: unknown) {
+  return legacyApiRemoved('mobileLogin')
 }
 
-export function sendMobileCode(params) {
-  return request({
-    method: 'post',
-    url: urls.sendMobileCode,
-    data: params
-  })
-}
-
-export function mobileLogin(params) {
-  return request({
-    method: 'post',
-    url: urls.mobileLogin,
-    data: params
-  })
-}
-export function sayHello(params) {
-  return request({
-    method: 'get',
-    url: urls.sayHello,
-    params: params
-  })
-}
-export function ssoBearerToken() {
-  return request({
-    method: 'get',
-    url: urls.ssoToBearerToken
-  })
-}
-export function userLogin(params): ApiResponsePromise<LoginResponse> {
-  return request({
-    method: 'post',
-    url: urls.userLogin,
-    data: params
-  })
+export function userLogin(_params?: unknown) {
+  return legacyApiRemoved('userLogin')
 }
 
 export function userLogOut() {
-  return request({
-    method: 'get',
-    url: urls.userLogOut
-  })
+  return legacyApiRemoved('userLogOut')
 }
 
-export function getUser(params) {
-  return request({
-    method: 'get',
-    url: urls.getUser,
-    params: params
-  })
+export function getUser(_params?: unknown) {
+  return legacyApiRemoved('getUser')
 }
 
-export function listUserQuickCommand(parameter) {
-  return request({
-    method: 'get',
-    url: urls.userQuickCommand,
-    params: parameter
-  })
+export function ssoToBearerToken(_params?: unknown) {
+  return legacyApiRemoved('ssoToBearerToken')
 }
 
-export function getUserQuickCommand(parameter) {
-  return request({
-    method: 'get',
-    url: urls.userQuickCommand,
-    params: parameter
-  })
+export function getUserDevice(_data?: unknown) {
+  return legacyApiRemoved('getUserDevice')
 }
 
-export function createUserQuickCommand(data) {
-  return request({
-    method: 'post',
-    url: urls.userQuickCommand,
-    data: data
-  })
+export function aliasUpdate(_data?: unknown) {
+  return legacyApiRemoved('aliasUpdate')
 }
 
-export function updateUserQuickCommand(data) {
-  return request({
-    method: 'put',
-    url: urls.userQuickCommand,
-    data: data
-  })
+export function aliasRefresh(_data?: unknown) {
+  return legacyApiRemoved('aliasRefresh')
 }
 
-export function deleteUserQuickCommand(params) {
-  return request({
-    method: 'delete',
-    url: urls.userQuickCommand,
-    params: params
-  })
+export function getTrustedDevices(_params?: unknown) {
+  return legacyApiRemoved('getTrustedDevices')
 }
 
-export function aliasUpdate(data) {
-  return request({
-    url: urls.aliasUpdateTerm,
-    method: 'post',
-    data: data
-  })
+export function revokeTrustedDevice(_data?: unknown) {
+  return legacyApiRemoved('revokeTrustedDevice')
 }
 
-export function aliasRefresh(data) {
-  return request({
-    method: 'post',
-    url: urls.aliasRefreshTerm,
-    data: data
-  })
+export function checkUserDevice(_data?: unknown) {
+  return Promise.resolve({ code: 200, data: { isOfficeDevice: false } })
 }
 
-export function updateUser(data) {
-  return request({
-    method: 'post',
-    url: urls.updateUser,
-    data: data
-  })
+export function updateUser(_data?: unknown) {
+  return legacyApiRemoved('updateUser')
 }
 
-export function changePassword(data) {
-  return request({
-    method: 'post',
-    url: urls.changePassword,
-    data: data
-  })
+export function updateAvatar(_data?: unknown) {
+  return legacyApiRemoved('updateAvatar')
 }
 
-export function checkUserDevice(data) {
-  return request({
-    method: 'post',
-    url: urls.checkUserDevice,
-    data: data
-  })
+export function changePassword(_data?: unknown) {
+  return legacyApiRemoved('changePassword')
 }
 
-export function sendEmailBindCode(params) {
-  return request({
-    method: 'post',
-    url: urls.sendEmailBindCode,
-    data: params
-  })
+export function sendEmailBindCode(_data?: unknown) {
+  return legacyApiRemoved('sendEmailBindCode')
 }
 
-export function verifyAndBindEmail(params) {
-  return request({
-    method: 'post',
-    url: urls.verifyAndBindEmail,
-    data: params
-  })
+export function verifyAndBindEmail(_data?: unknown) {
+  return legacyApiRemoved('verifyAndBindEmail')
 }
 
-export function sendMobileBindCode(params) {
-  return request({
-    method: 'post',
-    url: urls.sendMobileBindCode,
-    data: params
-  })
+export function sendMobileBindCode(_data?: unknown) {
+  return legacyApiRemoved('sendMobileBindCode')
 }
 
-export function verifyAndBindMobile(params) {
-  return request({
-    method: 'post',
-    url: urls.verifyAndBindMobile,
-    data: params
-  })
+export function verifyAndBindMobile(_data?: unknown) {
+  return legacyApiRemoved('verifyAndBindMobile')
 }
 
-export function updateAvatar(params) {
-  return request({
-    method: 'post',
-    url: urls.updateAvatar,
-    data: params
-  })
-}
-
-// GET /user/trusted-devices - list trusted devices (requires auth)
-export function getTrustedDevices() {
-  return request({
-    method: 'get',
-    url: urls.getTrustedDevices
-  })
-}
-
-// POST /user/trusted-devices/revoke - revoke a trusted device (requires auth)
-export function revokeTrustedDevice(deviceId: number) {
-  return request({
-    method: 'post',
-    url: urls.revokeTrustedDevice,
-    data: { deviceId }
-  })
-}
-
-export function deactivateAccount(data: { uid: number }) {
-  return request({
-    method: 'post',
-    url: urls.deactivateAccount,
-    data
-  })
+export function deactivateAccount(_data?: unknown) {
+  return legacyApiRemoved('deactivateAccount')
 }

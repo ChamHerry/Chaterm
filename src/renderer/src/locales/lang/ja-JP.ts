@@ -148,6 +148,7 @@ export default {
     mobileLogin: '携帯認証',
     loginByUser: 'アカウントでログイン',
     loginByEmail: 'メールでログイン',
+    yixinLogin: 'YiXin SSO Login',
     login: 'ログイン',
     loggingIn: 'ログイン中...',
     skip: '今すぐサインインしたくないですか？',

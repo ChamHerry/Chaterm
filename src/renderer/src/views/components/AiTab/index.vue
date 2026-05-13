@@ -74,17 +74,9 @@
             <div class="ai-login-prompt">
               <p>{{ $t('user.noAvailableModelMessage') }}</p>
               <p class="ai-prompt-description">
-                {{ isSkippedLogin ? $t('user.noAvailableModelDescription') : $t('user.noAvailableModelDescriptionLoggedIn') }}
+                {{ $t('user.noAvailableModelDescriptionLoggedIn') }}
               </p>
               <div class="ai-prompt-buttons">
-                <a-button
-                  v-if="isSkippedLogin"
-                  type="primary"
-                  class="login-button"
-                  @click="goToLogin"
-                >
-                  {{ $t('common.login') }}
-                </a-button>
                 <a-button
                   type="primary"
                   class="configure-model-button"
@@ -828,7 +820,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAutoScroll } from './composables/useAutoScroll'
 import { useAiChatSearch } from './composables/useAiChatSearch'
 import { useChatHistory } from './composables/useChatHistory'
@@ -955,10 +946,6 @@ const emit = defineEmits<{
   (e: 'db-schema-change', schemaName: string): void
   (e: 'db-auto-connect', assetId: string): void
 }>()
-
-const router = useRouter()
-
-const isSkippedLogin = ref(localStorage.getItem('login-skipped') === 'true')
 
 const {
   currentChatId,
@@ -1244,10 +1231,6 @@ useEventBusListeners({
   workspace: props.workspace
 })
 
-const goToLogin = () => {
-  router.push('/login')
-}
-
 const goToModelSettings = () => {
   eventBus.emit('openUserTab', 'userConfig')
   setTimeout(() => {
@@ -1274,13 +1257,6 @@ watch(editingTabId, (newId) => {
     })
   }
 })
-
-watch(
-  () => localStorage.getItem('login-skipped'),
-  (newValue) => {
-    isSkippedLogin.value = newValue === 'true'
-  }
-)
 
 // When a streaming response finishes and the last message is awaiting user
 // approval (command / mcp_tool_call), the inline approval buttons mount in

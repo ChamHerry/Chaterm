@@ -139,9 +139,7 @@ import { shouldSkipAssetLookup } from './utils/wakeupConnection'
 import { registerSshConnection, unregisterSshConnection } from './utils/sshConnectionRegistry'
 import { getLastNonEmptyLine, isTerminalPromptLine } from './utils/terminalPrompt'
 import { stripAnsiBasic, stripAnsiExtended } from './utils/ansiUtils'
-import { useDeviceStore } from '@/store/useDeviceStore'
 import { isFocusInAiTab } from '@/utils/domUtils'
-import { checkUserDevice } from '@api/user/user'
 import { keywordHighlightService } from '@/services/keywordHighlightService'
 import { useZmodem } from './utils/chatermZmodem'
 import { shouldAutoScrollAfterTerminalStateUpdate, shouldAutoScrollAfterTerminalWrite } from './utils/terminalScroll'
@@ -479,19 +477,11 @@ let dbConfigStash: {
 } = {}
 let config
 
-const deviceStore = useDeviceStore()
 const isOfficeDevice = ref(false)
 const isLocalConnect = ref(false)
 
 const getUserInfo = async () => {
-  try {
-    const res = (await checkUserDevice({ ip: deviceStore.getDeviceIp, macAddress: deviceStore.getMacAddress })) as any
-    if (res && res.code === 200) {
-      isOfficeDevice.value = res.data.isOfficeDevice
-    }
-  } catch (error) {
-    logger.error('Failed to get user info', { error: error })
-  }
+  isOfficeDevice.value = false
 }
 const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 

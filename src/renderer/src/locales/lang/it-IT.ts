@@ -148,6 +148,7 @@ export default {
     mobileLogin: 'Login con cellulare',
     loginByUser: 'Login con account',
     loginByEmail: 'Login con email',
+    yixinLogin: 'YiXin SSO Login',
     login: 'Login',
     loggingIn: 'Login in corso...',
     skip: 'Non vuoi accedere ora?',

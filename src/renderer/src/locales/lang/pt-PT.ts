@@ -148,6 +148,7 @@ export default {
     mobileLogin: 'Iniciar Sessão com Telemóvel',
     loginByUser: 'Iniciar sessão com conta',
     loginByEmail: 'Iniciar sessão com email',
+    yixinLogin: 'YiXin SSO Login',
     login: 'Iniciar Sessão',
     loggingIn: 'A iniciar sessão...',
     skip: 'Não deseja iniciar sessão agora?',

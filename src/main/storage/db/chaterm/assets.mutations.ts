@@ -9,14 +9,7 @@ const isOrganizationType = (assetType: string): boolean => {
 
 // Use dynamically imported incremental sync trigger, keep consistent with original implementation
 function triggerIncrementalSync(): void {
-  setImmediate(async () => {
-    try {
-      const { SyncController } = await import('../../data_sync/core/SyncController')
-      await SyncController.triggerIncrementalSync()
-    } catch (error) {
-      logger.warn('Failed to trigger incremental sync', { error: error })
-    }
-  })
+  // Cloud data sync was removed; local DB mutations no longer enqueue remote uploads.
 }
 
 export function updateLocalAssetLabelLogic(db: Database.Database, uuid: string, label: string): any {

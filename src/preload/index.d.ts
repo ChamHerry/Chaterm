@@ -622,14 +622,6 @@ interface ApiType {
   kbImportFolder: (srcAbsPath: string, dstRelDir: string) => Promise<{ jobId: string; relPath: string }>
   kbSetSearchEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
   onKbTransferProgress: (callback: (data: { jobId: string; transferred: number; total: number; destRelPath: string }) => void) => () => void
-  kbSyncGetStatus: () => Promise<{ status: 'idle' | 'syncing' }>
-  kbSyncLastTime: () => Promise<number | null>
-  kbSyncLastResults: () => Promise<{
-    finishedAt: number
-    uploads: Array<{ relPath: string; kind: 'upload' | 'delete'; status: string; message: string }>
-    deletes: Array<{ relPath: string; kind: 'upload' | 'delete'; status: string; message: string }>
-  }>
-  getKbCloudStorage: () => Promise<{ usedBytes: number; totalBytes: number }>
   getLocalWorkingDirectory: () => Promise<{ success: boolean; cwd: string }>
   getShellsLocal: () => Promise<any>
   agentEnableAndConfigure: (opts: { enabled: boolean }) => Promise<any>
@@ -642,12 +634,6 @@ interface ApiType {
   readKeywordHighlightConfig: () => Promise<string>
   writeKeywordHighlightConfig: (content: string) => Promise<{ success: boolean }>
   onKeywordHighlightConfigFileChanged: (callback: (content: string) => void) => () => void
-  setDataSyncEnabled: (enabled: boolean) => Promise<any>
-  // Chat Sync V2
-  chatSyncSetEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
-  chatSyncGetStatus: () => Promise<{ success: boolean; data?: any; error?: string }>
-  chatSyncSyncNow: () => Promise<{ success: boolean; error?: string }>
-  chatSyncSetAiTabVisible: (visible: boolean) => Promise<{ success: boolean }>
   getSystemInfo: (id: string) => Promise<{
     success: boolean
     data?: CommandGenerationContext

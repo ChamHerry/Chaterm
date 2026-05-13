@@ -275,7 +275,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
 import eventBus from '@/utils/eventBus'
-import { getUser } from '@/api/user/user'
 import {
   CloudOutlined,
   CloudUploadOutlined,
@@ -341,27 +340,12 @@ function formatCapacity(bytes: number): string {
 }
 
 async function loadCloudStorage(): Promise<void> {
-  try {
-    if (api?.getKbCloudStorage) {
-      const res = await api.getKbCloudStorage()
-      cloudStorage.value = { usedBytes: res.usedBytes ?? 0, totalBytes: res.totalBytes ?? 1024 * 1024 * 1024 }
-    }
-  } catch {
-    // keep default
-  }
+  // Chaterm cloud storage has been removed; capacity display is local-only.
+  cloudStorage.value = { usedBytes: cloudStorage.value.usedBytes, totalBytes: displayTotalBytes.value }
 }
 
 async function loadUserSubscription(): Promise<void> {
-  if (localStorage.getItem('login-skipped') === 'true') {
-    subscription.value = undefined
-    return
-  }
-  try {
-    const res: any = await getUser({})
-    subscription.value = typeof res?.data?.subscription === 'string' ? res.data.subscription : undefined
-  } catch {
-    subscription.value = undefined
-  }
+  subscription.value = undefined
 }
 
 function importErrorMessage(err: unknown, forFolder: boolean): string {

@@ -39,7 +39,8 @@ export const LoginFunnelEvents = {
 export const LoginMethods = {
   ACCOUNT: 'username_password',
   EMAIL: 'email_verification',
-  GUEST: 'guest_mode'
+  GUEST: 'guest_mode',
+  SSO: 'yixin_sso'
 } as const
 
 /**

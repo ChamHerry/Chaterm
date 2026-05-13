@@ -19,13 +19,8 @@ const loadEditionConfig = (edition: string) => {
     return {
       edition,
       displayName: 'Chaterm',
-      api: { baseUrl: '', kmsUrl: '', syncUrl: '' },
-      update: { serverUrl: '', releaseNotesUrl: '' },
-      auth: { loginBaseUrl: '' },
-      defaults: { language: 'en-US' },
-      legal: { privacyPolicyUrl: '', termsOfServiceUrl: '' },
-      speech: { wsUrl: '' },
-      docs: { baseUrl: '' }
+      auth: { yixinSsoBaseUrl: '', yixinLoginPath: '/login', yixinValidatePath: '/serviceValidate' },
+      defaults: { language: 'en-US' }
     }
   }
 }

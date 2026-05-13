@@ -148,6 +148,7 @@ export default {
     mobileLogin: 'Вход по телефону',
     loginByUser: 'Войти с учётной записью',
     loginByEmail: 'Войти с email',
+    yixinLogin: 'YiXin SSO Login',
     login: 'Войти',
     loggingIn: 'Вход...',
     skip: 'Не хотите войти прямо сейчас?',

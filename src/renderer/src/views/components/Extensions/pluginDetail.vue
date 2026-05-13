@@ -152,7 +152,6 @@ import { sanitizeHtml } from '@/utils/sanitize'
 import eventBus from '@/utils/eventBus'
 
 import i18n from '@/locales'
-import { listPluginVersions, getPluginIconUrl } from '@/api/plugin/plugin'
 import { convertFileLocalResourceSrc } from '@/utils/convertFileLocalResourceSrc'
 import { usePluginStore } from './usePlugins' //
 
@@ -229,10 +228,8 @@ const plugin = ref({
   size: ''
 })
 
-const getPluginDetailsFromStore = async () => {
-  if (!pluginId.value) return null
-  const res: any = await listPluginVersions(pluginId.value)
-  return res?.data || res
+const getPluginDetailsFromStore = async (): Promise<any | null> => {
+  return null
 }
 
 const iconUrl = ref('')
@@ -246,12 +243,7 @@ const updateIconSrc = async () => {
   }
 
   if (!isInstalled.value) {
-    try {
-      iconUrl.value = await getPluginIconUrl(item.id, item.version)
-    } catch (e) {
-      logger.error('Load icon failed', { error: e })
-      iconUrl.value = ''
-    }
+    iconUrl.value = ''
     return
   }
 

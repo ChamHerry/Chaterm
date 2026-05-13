@@ -12,34 +12,16 @@ const envDir = resolve('build')
 
 type Edition = 'cn' | 'global'
 
-// Edition configuration interface (must match build/edition-config/*.json structure)
 interface EditionConfig {
   edition: Edition
   displayName: string
-  api: {
-    baseUrl: string
-    kmsUrl: string
-    syncUrl: string
-  }
-  update: {
-    serverUrl: string
-    releaseNotesUrl: string
-  }
   auth: {
-    loginBaseUrl: string
+    yixinSsoBaseUrl: string
+    yixinLoginPath: string
+    yixinValidatePath: string
   }
   defaults: {
     language: string
-  }
-  legal: {
-    privacyPolicyUrl: string
-    termsOfServiceUrl: string
-  }
-  speech: {
-    wsUrl: string
-  }
-  docs: {
-    baseUrl: string
   }
 }
 
@@ -81,11 +63,7 @@ export default defineConfig(({ mode }) => {
   const editionConfig = loadEditionConfig(edition)
 
   // Load environment variables from the appropriate .env file
-  // Note: Must specify 'RENDERER_' prefix since project uses RENDERER_* variables
   const env = loadEnv(resolvedMode, envDir, 'RENDERER_')
-
-  // Use environment variable if available, otherwise use edition config
-  const proxyTarget = env.RENDERER_VUE_APP_API_BASEURL || editionConfig.api.baseUrl
 
   // Sourcemap: enabled in dev, disabled in production by default (use ENABLE_SOURCEMAP=true to override)
   const isDev = resolvedMode.startsWith('development')
@@ -126,7 +104,6 @@ export default defineConfig(({ mode }) => {
         // Main process reads CHATERM_KB_SEARCH_ENABLED at runtime, injected at build time here.
         'process.env.CHATERM_KB_SEARCH_ENABLED': JSON.stringify(env.RENDERER_KB_SEARCH_ENABLED || ''),
         'process.env.CHATERM_TELEMETRY_ENABLED': JSON.stringify(env.RENDERER_TELEMETRY_ENABLED || ''),
-        'process.env.CHATERM_DATA_SYNC_ENABLED': JSON.stringify(env.RENDERER_DATA_SYNC_ENABLED || ''),
         'process.env.CHATERM_DEPLOY_STATUS': JSON.stringify(env.RENDERER_DEPLOY_STATUS || '0'),
         'process.env.CHATERM_PREINSTALLED_PLUGINS': JSON.stringify(env.RENDERER_PREINSTALLED_PLUGINS || '')
       },
@@ -171,15 +148,7 @@ export default defineConfig(({ mode }) => {
           '@common': resolve('src/shared')
         }
       },
-      server: {
-        proxy: {
-          '/api': {
-            target: proxyTarget,
-            changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api/, '')
-          }
-        }
-      },
+      server: {},
       optimizeDeps: {
         include: [
           'monaco-editor',

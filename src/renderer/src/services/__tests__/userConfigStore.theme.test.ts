@@ -1,6 +1,16 @@
 // src/renderer/src/services/__tests__/userConfigStore.theme.test.ts
 import { describe, it, expect, vi } from 'vitest'
 
+vi.hoisted(() => {
+  ;(globalThis as any).window = (globalThis as any).window || {}
+  ;(globalThis as any).window.api = {
+    kvGet: vi.fn(async () => null),
+    kvMutate: vi.fn(async () => undefined),
+    kvTransaction: vi.fn(async () => undefined),
+    updateTheme: vi.fn()
+  }
+})
+
 const { mockGetUserTermConfig, mockUpdateUserTermConfig } = vi.hoisted(() => ({
   mockGetUserTermConfig: vi.fn(),
   mockUpdateUserTermConfig: vi.fn()
@@ -18,6 +28,14 @@ const { mockUserConfigPiniaStore } = vi.hoisted(() => ({
 vi.mock('@/api/sync/sync', () => ({
   getUserTermConfig: mockGetUserTermConfig,
   updateUserTermConfig: mockUpdateUserTermConfig
+}))
+
+vi.mock('@/locales', () => ({
+  default: {
+    global: {
+      locale: { value: 'zh-CN' }
+    }
+  }
 }))
 
 vi.mock('@/store/userConfigStore', () => ({

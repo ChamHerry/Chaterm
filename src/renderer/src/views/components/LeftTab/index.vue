@@ -142,19 +142,11 @@
       class="user-menu"
     >
       <div
-        v-if="isSkippedLogin"
-        class="menu-item"
-        @click="goToLogin"
-        >{{ $t('common.login') }}</div
-      >
-      <div
-        v-if="!isSkippedLogin"
         class="menu-item"
         @click="userInfo"
         >{{ $t('common.userInfo') }}</div
       >
       <div
-        v-if="!isSkippedLogin"
         class="menu-item"
         @click="logout"
         >{{ $t('common.logout') }}</div
@@ -164,22 +156,18 @@
 </template>
 
 <script setup lang="ts">
-import { removeToken } from '@/utils/permission'
+import { clearCurrentSession } from '@/services/yixinSessionService'
 const emit = defineEmits(['toggle-menu', 'open-user-tab'])
 import { menuTabsData } from './constants/data'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { userLogOut } from '@/api/user/user'
 import { userInfoStore } from '@/store/index'
 import { pinia } from '@/main'
 import eventBus from '@/utils/eventBus'
 import { shortcutService } from '@/services/shortcutService'
-import { dataSyncService } from '@/services/dataSyncService'
-import { chatSyncService } from '@/services/chatSyncService'
 import { convertFileLocalResourceSrc } from '@/utils/convertFileLocalResourceSrc'
 
 const logger = createRendererLogger('leftTab')
-let storageEventHandler: ((e: StorageEvent) => void) | null = null
 let removePluginMetadataListener: (() => void) | null = null
 const pluginViews = ref<any[]>([])
 
@@ -188,13 +176,7 @@ const pluginViewIconSrc = (icon: string) => convertFileLocalResourceSrc(icon)
 const userStore = userInfoStore(pinia)
 const activeKey = ref('workspace')
 const showUserMenu = ref<boolean>(false)
-const isSkippedLogin = ref<boolean>(localStorage.getItem('login-skipped') === 'true')
 const router = useRouter()
-
-const goToLogin = () => {
-  showUserMenu.value = false
-  router.push('/login')
-}
 
 const menuClick = (key) => {
   let type = ''
@@ -274,42 +256,9 @@ const files = (key) => {
 }
 
 const logout = async () => {
-  const isSkippedLogin = localStorage.getItem('login-skipped') === 'true'
-  try {
-    if (dataSyncService.getInitializationStatus()) {
-      logger.info('Data sync is enabled during logout, stopping')
-      await dataSyncService.disableDataSync()
-      await chatSyncService.disable()
-      dataSyncService.reset()
-      logger.info('Data sync and chat sync have been stopped')
-    }
-  } catch (error) {
-    logger.error('Failed to stop data sync during logout', { error: error })
-  }
-
-  if (isSkippedLogin) {
-    localStorage.removeItem('login-skipped')
-    removeToken()
-    shortcutService.init()
-    router.push('/login')
-    showUserMenu.value = false
-    return
-  }
-
-  userLogOut()
-    .then((res) => {
-      logger.info('Logout response', { data: res })
-      removeToken()
-      shortcutService.init()
-      router.push('/login')
-    })
-    .catch((err) => {
-      logger.error('Logout failed', { error: err })
-      removeToken()
-      shortcutService.init()
-      router.push('/login')
-    })
-
+  clearCurrentSession()
+  shortcutService.init()
+  router.push('/login')
   showUserMenu.value = false
 }
 const api = (window as any).api
@@ -333,21 +282,11 @@ onMounted(async () => {
   removePluginMetadataListener = api.onPluginMetadataChanged(async () => {
     await refreshPluginViews()
   })
-  storageEventHandler = (e: StorageEvent) => {
-    if (e.key === 'login-skipped') {
-      isSkippedLogin.value = e.newValue === 'true'
-    }
-  }
-  window.addEventListener('storage', storageEventHandler)
 })
 
 onUnmounted(() => {
   eventBus.off('openAiRight')
   eventBus.off('openUserTab')
-  if (storageEventHandler) {
-    window.removeEventListener('storage', storageEventHandler)
-    storageEventHandler = null
-  }
   if (removePluginMetadataListener) {
     removePluginMetadataListener()
     removePluginMetadataListener = null

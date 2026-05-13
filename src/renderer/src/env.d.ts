@@ -8,8 +8,6 @@ interface ImportMetaEnv {
   readonly RENDERER_KB_SEARCH_ENABLED?: string
   /** Build-time policy switch for telemetry settings in privacy page. */
   readonly RENDERER_TELEMETRY_ENABLED?: string
-  /** Build-time policy switch for data sync settings in privacy page. */
-  readonly RENDERER_DATA_SYNC_ENABLED?: string
 }
 
 interface ImportMeta {
@@ -24,30 +22,13 @@ declare const __APP_INFO__: {
 declare const __EDITION_CONFIG__: {
   edition: 'cn' | 'global'
   displayName: string
-  api: {
-    baseUrl: string
-    kmsUrl: string
-    syncUrl: string
-  }
-  update: {
-    serverUrl: string
-    releaseNotesUrl: string
-  }
   auth: {
-    loginBaseUrl: string
+    yixinSsoBaseUrl: string
+    yixinLoginPath?: string
+    yixinValidatePath?: string
   }
   defaults: {
     language: string
-  }
-  legal: {
-    privacyPolicyUrl: string
-    termsOfServiceUrl: string
-  }
-  speech: {
-    wsUrl: string
-  }
-  docs: {
-    baseUrl: string
   }
 }
 

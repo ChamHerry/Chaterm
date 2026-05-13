@@ -560,27 +560,16 @@ import { LockOutlined } from '@ant-design/icons-vue'
 import { updateGlobalState, getGlobalState, getSecret, storeSecret, getAllExtensionState } from '@renderer/agent/storage/state'
 import eventBus from '@/utils/eventBus'
 import i18n from '@/locales'
-import { getUser } from '@api/user/user'
-import { isEnterpriseDeployEnabled, syncEnterpriseStateFromUserData } from '@views/components/AiTab/composables/useModelConfiguration'
+import { syncEnterpriseStateFromUserData } from '@views/components/AiTab/composables/useModelConfiguration'
 
 const logger = createRendererLogger('settings.model')
 
-// Define interface for model options
 interface ModelOption {
   id: string
   name: string
   checked: boolean
   type: string
   apiProvider: string
-}
-
-// Define interface for default models from API
-interface DefaultModel {
-  id: string
-  name?: string
-  provider?: string
-
-  [key: string]: unknown
 }
 
 interface EnterpriseModelConfig {
@@ -593,10 +582,7 @@ const modelOptions = ref<ModelOption[]>([])
 const lockedModelNames = ref<Set<string>>(new Set())
 const enterpriseConfigLocked = ref(false)
 
-const ENTERPRISE_MODEL_ID_PREFIX = 'enterprise:'
-
 const isLockedModel = (name: string): boolean => lockedModelNames.value.has(name)
-const isEnterpriseModelOption = (option: Pick<ModelOption, 'id'> | undefined): boolean => Boolean(option?.id?.startsWith(ENTERPRISE_MODEL_ID_PREFIX))
 
 const awsRegionOptions = ref([
   { value: 'us-east-1', label: 'us-east-1' },
@@ -683,24 +669,6 @@ const openAiUrlPreview = computed(() => {
   return `${baseUrl}${separator}${apiPath}`
 })
 
-const normalizeEnterpriseModelConfigs = (configs: unknown): EnterpriseModelConfig[] => {
-  if (!Array.isArray(configs)) return []
-
-  return configs
-    .map((item) => {
-      const config = item as Record<string, unknown>
-      const modelName = String(config?.modelName || '').trim()
-      const provider = String(config?.provider || '')
-        .trim()
-        .toLowerCase()
-      if (!modelName || !provider) {
-        return null
-      }
-      return { modelName, provider }
-    })
-    .filter((config): config is EnterpriseModelConfig => Boolean(config))
-}
-
 const getEnterpriseModelNameByProvider = (configs: EnterpriseModelConfig[], provider: string): string => {
   return configs.find((config) => config.provider === provider)?.modelName || ''
 }
@@ -708,8 +676,8 @@ const getEnterpriseModelNameByProvider = (configs: EnterpriseModelConfig[], prov
 // Load saved configuration
 const loadSavedConfig = async () => {
   try {
-    const enterpriseModelConfigs = normalizeEnterpriseModelConfigs(await getGlobalState('enterpriseModelConfigs'))
-    const deployEnterpriseEnabled = isEnterpriseDeployEnabled()
+    const enterpriseModelConfigs: EnterpriseModelConfig[] = []
+    const deployEnterpriseEnabled = false
     const sharedApiModelId = ((await getGlobalState('apiModelId')) as string) || ''
 
     // Load API related configuration
@@ -1073,112 +1041,17 @@ const sortModelOptions = () => {
 
 const loadModelOptions = async () => {
   try {
-    const isSkippedLogin = localStorage.getItem('login-skipped') === 'true'
-
-    // Skip loading built-in models if user skipped login
-    if (isSkippedLogin) {
-      const savedModelOptions = (await getGlobalState('modelOptions')) || []
-      if (savedModelOptions && Array.isArray(savedModelOptions)) {
-        // Only load custom models for guest users
-        modelOptions.value = savedModelOptions
-          .filter((option) => option.type !== 'standard')
-          .map((option) => ({
-            id: option.id || '',
-            name: option.name || '',
-            checked: Boolean(option.checked),
-            type: option.type || 'custom',
-            apiProvider: option.apiProvider || 'default'
-          }))
-        sortModelOptions()
-      }
-      await saveModelOptions()
-      return
-    }
-
-    let defaultModels: DefaultModel[] = []
-    let subscriptionModelsList: string[] = []
-    let enterpriseModelConfigs: EnterpriseModelConfig[] = []
-    let enterprisePluginActive = false
-    await getUser({}).then(async (res) => {
-      const userData = res?.data || {}
-      await syncEnterpriseStateFromUserData(userData, { reloadPlugins: true })
-      enterpriseModelConfigs = normalizeEnterpriseModelConfigs(userData.enterpriseModelConfigs)
-      enterprisePluginActive =
-        isEnterpriseDeployEnabled() && enterpriseModelConfigs.length > 0 && Boolean(await getGlobalState('enterpriseModelPluginActive'))
-      defaultModels = enterprisePluginActive ? [] : userData.models || []
-      subscriptionModelsList = enterprisePluginActive ? [] : (userData.subscriptionModels || []).map((m: unknown) => String(m))
-      await updateGlobalState('defaultBaseUrl', userData.llmGatewayAddr)
-      await storeSecret('defaultApiKey', userData.key)
-    })
-
-    const availableSet = new Set(defaultModels.map((m) => String(m)))
-    const allKnownSet = new Set([...availableSet, ...subscriptionModelsList])
-    const enterpriseModelNames = new Set(enterpriseModelConfigs.map((config) => config.modelName))
-    lockedModelNames.value = new Set(enterprisePluginActive ? [] : subscriptionModelsList.filter((m) => !availableSet.has(m)))
+    await syncEnterpriseStateFromUserData({}, { reloadPlugins: true })
 
     const savedModelOptions = (await getGlobalState('modelOptions')) || []
     if (savedModelOptions && Array.isArray(savedModelOptions)) {
-      if (enterprisePluginActive) {
-        modelOptions.value = savedModelOptions
-          .filter((option) => isEnterpriseModelOption(option))
-          .map((option) => ({
-            id: option.id || '',
-            name: option.name || '',
-            checked: Boolean(option.checked),
-            type: option.type || 'standard',
-            apiProvider: option.apiProvider || 'default'
-          }))
-        sortModelOptions()
-        await saveModelOptions()
-        return
-      }
-
-      const filteredOptions = savedModelOptions.filter((option) => {
-        if (option.type !== 'standard') return true
-        if (isEnterpriseModelOption(option)) return true
-        if (enterprisePluginActive) {
-          return !enterpriseModelNames.has(option.name)
-        }
-        return allKnownSet.has(option.name)
-      })
-
-      defaultModels.forEach((defaultModel) => {
-        const name = String(defaultModel)
-        const exists = filteredOptions.some((option) => option.name === name)
-        if (!exists) {
-          filteredOptions.push({
-            id: name,
-            name: name,
-            checked: true,
-            type: 'standard',
-            apiProvider: 'default'
-          })
-        }
-      })
-
-      if (!enterprisePluginActive) {
-        lockedModelNames.value.forEach((name) => {
-          const exists = filteredOptions.some((option) => option.name === name)
-          if (!exists) {
-            filteredOptions.push({
-              id: name,
-              name: name,
-              checked: true,
-              type: 'standard',
-              apiProvider: 'default'
-            })
-          }
-        })
-      }
-
-      modelOptions.value = filteredOptions.map((option) => ({
+      modelOptions.value = savedModelOptions.map((option) => ({
         id: option.id || '',
         name: option.name || '',
         checked: Boolean(option.checked),
         type: option.type || 'standard',
         apiProvider: option.apiProvider || 'default'
       }))
-
       sortModelOptions()
     }
     await saveModelOptions()

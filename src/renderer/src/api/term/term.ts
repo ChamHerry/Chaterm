@@ -1,43 +1,19 @@
-import request from '@/utils/request'
-import { CommonResponse, TermPostData, TermQueryParams } from './define'
+import type { CommonResponse, TermPostData, TermQueryParams } from './define'
 
-const termProxyApi = {
-  TermFileContent: '/term-api/file-content',
-  TermFileContentSave: '/term-api/file-content/save',
-  TermFileLs: '/term-api/file-ls',
-  TermFileRename: '/term-api/file-rename',
-  TermCmdList: '/term-api/cmd/list',
-  AliasUpdate: '/term-api/alias/update',
-  AliasRefresh: '/term-api/alias/refresh',
-  GetUserSessionList: '/term-api/session/list'
+const removed = (): Promise<CommonResponse> => Promise.reject(new Error('Legacy remote terminal API was removed in YiXin-only local mode'))
+
+export function termFileContent(_parameter: TermQueryParams): Promise<CommonResponse> {
+  return removed()
 }
 
-export function termFileContent(parameter: TermQueryParams): Promise<CommonResponse> {
-  return request({
-    url: termProxyApi.TermFileContent,
-    method: 'get',
-    params: parameter
-  })
+export function termFileContentSave(_data: TermPostData): Promise<CommonResponse> {
+  return removed()
 }
 
-export function termFileContentSave(data: TermPostData): Promise<CommonResponse> {
-  return request({
-    url: termProxyApi.TermFileContentSave,
-    method: 'post',
-    data: data
-  })
+export function termFileLs(_parameter: TermQueryParams): Promise<CommonResponse> {
+  return removed()
 }
-export function termFileLs(parameter: TermQueryParams): Promise<CommonResponse> {
-  return request({
-    url: termProxyApi.TermFileLs,
-    method: 'get',
-    params: parameter
-  })
-}
-export function getUserSessionList(data: TermPostData): Promise<CommonResponse> {
-  return request({
-    method: 'post',
-    url: termProxyApi.GetUserSessionList,
-    data: data
-  })
+
+export function getUserSessionList(_data: TermPostData): Promise<CommonResponse> {
+  return removed()
 }

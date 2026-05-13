@@ -15,30 +15,13 @@ export type Edition = 'cn' | 'global'
 export interface EditionConfig {
   edition: Edition
   displayName: string
-  api: {
-    baseUrl: string
-    kmsUrl: string
-    syncUrl: string
-  }
-  update: {
-    serverUrl: string
-    releaseNotesUrl: string
-  }
   auth: {
-    loginBaseUrl: string
+    yixinSsoBaseUrl: string
+    yixinLoginPath?: string
+    yixinValidatePath?: string
   }
   defaults: {
     language: string
-  }
-  legal: {
-    privacyPolicyUrl: string
-    termsOfServiceUrl: string
-  }
-  speech: {
-    wsUrl: string
-  }
-  docs: {
-    baseUrl: string
   }
 }
 
@@ -183,38 +166,38 @@ export function getEditionConfig(): EditionConfig {
 }
 
 /**
- * Get API base URL for current edition
+ * Deprecated Chaterm cloud URLs are intentionally unavailable in YiXin-only mode.
  */
 export function getApiBaseUrl(): string {
-  return loadEditionConfig().api.baseUrl
+  return ''
 }
 
-/**
- * Get KMS URL for current edition
- */
 export function getKmsUrl(): string {
-  return loadEditionConfig().api.kmsUrl
+  return ''
 }
 
-/**
- * Get sync URL for current edition
- */
 export function getSyncUrl(): string {
-  return loadEditionConfig().api.syncUrl
+  return ''
 }
 
-/**
- * Get update server URL for current edition
- */
 export function getUpdateServerUrl(): string {
-  return loadEditionConfig().update.serverUrl
+  return ''
+}
+
+export function getLoginBaseUrl(): string {
+  return ''
 }
 
 /**
- * Get login base URL for current edition
+ * Get YiXin CAS SSO configuration.
  */
-export function getLoginBaseUrl(): string {
-  return loadEditionConfig().auth.loginBaseUrl
+export function getYixinSsoConfig(): { ssoBaseUrl: string; loginPath?: string; validatePath?: string } {
+  const auth = loadEditionConfig().auth
+  return {
+    ssoBaseUrl: auth.yixinSsoBaseUrl || '',
+    loginPath: auth.yixinLoginPath,
+    validatePath: auth.yixinValidatePath
+  }
 }
 
 /**
@@ -224,30 +207,18 @@ export function getDefaultLanguage(): string {
   return loadEditionConfig().defaults.language
 }
 
-/**
- * Get privacy policy URL for current edition
- */
 export function getPrivacyPolicyUrl(): string {
-  return loadEditionConfig().legal.privacyPolicyUrl
+  return ''
 }
 
-/**
- * Get terms of service URL for current edition
- */
 export function getTermsOfServiceUrl(): string {
-  return loadEditionConfig().legal.termsOfServiceUrl
+  return ''
 }
 
-/**
- * Get docs base URL for current edition
- */
 export function getDocsBaseUrl(): string {
-  return loadEditionConfig().docs.baseUrl
+  return ''
 }
 
-/**
- * Get speech WebSocket URL for current edition
- */
 export function getSpeechWsUrl(): string {
-  return loadEditionConfig().speech.wsUrl
+  return ''
 }

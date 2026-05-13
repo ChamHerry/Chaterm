@@ -136,6 +136,7 @@ export default {
     mobileLogin: 'الهاتف',
     loginByUser: 'تسجيل الدخول بالحساب',
     loginByEmail: 'تسجيل الدخول بالبريد الإلكتروني',
+    yixinLogin: 'YiXin SSO Login',
     login: 'تسجيل الدخول',
     loggingIn: 'يتم تسجيل الدخول...',
     skip: 'لا تريد تسجيل الدخول الآن؟',

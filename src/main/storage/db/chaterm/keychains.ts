@@ -7,16 +7,7 @@ const logger = createLogger('db')
  * Called after data changes to trigger immediate sync
  */
 function triggerIncrementalSync(): void {
-  // Use dynamic import to avoid circular dependencies
-  setImmediate(async () => {
-    try {
-      const { SyncController } = await import('../../data_sync/core/SyncController')
-      await SyncController.triggerIncrementalSync()
-    } catch (error) {
-      logger.warn('Failed to trigger incremental sync', { error: error })
-      // Don't throw exception to avoid affecting database operations
-    }
-  })
+  // Cloud data sync was removed; local DB mutations no longer enqueue remote uploads.
 }
 
 // Get keychain options

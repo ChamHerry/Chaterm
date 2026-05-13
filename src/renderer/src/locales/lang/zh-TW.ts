@@ -148,6 +148,7 @@ export default {
     mobileLogin: '手機驗證碼',
     loginByUser: '賬號密碼登錄',
     loginByEmail: '郵箱驗證碼登錄',
+    yixinLogin: 'YiXin SSO Login',
     login: '立即登錄',
     loggingIn: '正在登錄中...',
     skip: '暫不登錄？',

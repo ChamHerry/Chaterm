@@ -33,614 +33,136 @@
         <span style="color: #2a82e4; margin-left: 12px">{{ isChineseEdition() ? 'Chaterm CN' : $t('login.title') }}</span>
       </div>
       <div class="term_login_input">
-        <template v-if="isDev">
-          <!-- Login method switch -->
-          <div class="login-tabs">
-            <div
-              class="tab-item"
-              :class="{ active: activeTab === 'email' }"
-              @click="activeTab = 'email'"
-            >
-              {{ $t('login.emailLogin') }}
-            </div>
-            <div
-              v-if="isChineseEdition()"
-              class="tab-item"
-              :class="{ active: activeTab === 'mobile' }"
-              @click="activeTab = 'mobile'"
-            >
-              {{ $t('login.mobileLogin') }}
-            </div>
-            <div
-              class="tab-item"
-              :class="{ active: activeTab === 'account' }"
-              @click="activeTab = 'account'"
-            >
-              {{ $t('login.accountLogin') }}
-            </div>
-          </div>
-
-          <!-- Login form -->
-          <div class="login-form">
-            <!-- Account password login -->
-            <div
-              v-if="activeTab === 'account'"
-              class="form-content"
-            >
-              <div class="input-group">
-                <div class="input-field">
-                  <span class="input-icon">
-                    <UserOutlined />
-                  </span>
-                  <input
-                    v-model="accountForm.username"
-                    type="text"
-                    :placeholder="$t('login.pleaseInputUsername')"
-                    class="form-input"
-                  />
-                </div>
-                <div class="input-divider"></div>
-                <div class="input-field">
-                  <span class="input-icon">
-                    <LockOutlined />
-                  </span>
-                  <input
-                    v-model="accountForm.password"
-                    type="password"
-                    :placeholder="$t('login.pleaseInputPassword')"
-                    class="form-input"
-                  />
-                </div>
-                <div class="input-divider"></div>
-              </div>
-
-              <button
-                class="login-btn primary"
-                :disabled="loading"
-                @click="onAccountLogin"
-              >
-                <span
-                  v-if="loading"
-                  class="loading-spinner"
-                ></span>
-                {{ loading ? $t('login.loggingIn') : $t('login.login') }}
-              </button>
-            </div>
-
-            <!-- Email verification code login -->
-            <div
-              v-if="activeTab === 'email'"
-              class="form-content"
-            >
-              <div class="input-group">
-                <div class="input-field">
-                  <span class="input-icon">
-                    <MailOutlined />
-                  </span>
-                  <input
-                    v-model="emailForm.email"
-                    type="email"
-                    :placeholder="$t('login.pleaseInputEmail')"
-                    class="form-input"
-                  />
-                </div>
-                <div class="input-divider"></div>
-                <div class="input-field">
-                  <span class="input-icon">
-                    <SafetyOutlined />
-                  </span>
-                  <input
-                    v-model="emailForm.code"
-                    type="text"
-                    :placeholder="$t('login.pleaseInputCode')"
-                    class="form-input"
-                  />
-                  <button
-                    class="code-btn"
-                    :disabled="codeSending || countdown > 0"
-                    @click="sendCode"
-                  >
-                    {{ countdown > 0 ? `${countdown}s` : $t('login.getCode') }}
-                  </button>
-                </div>
-                <div class="input-divider"></div>
-              </div>
-
-              <button
-                class="login-btn primary"
-                :disabled="loading"
-                @click="onEmailLogin"
-              >
-                <span
-                  v-if="loading"
-                  class="loading-spinner"
-                ></span>
-                {{ loading ? $t('login.loggingIn') : $t('login.login') }}
-              </button>
-            </div>
-
-            <!-- Mobile verification code login -->
-            <div
-              v-if="isChineseEdition() && activeTab === 'mobile'"
-              class="form-content"
-            >
-              <div class="input-group">
-                <div class="input-field">
-                  <span class="input-icon">
-                    <MobileOutlined />
-                  </span>
-                  <span class="mobile-prefix">+86</span>
-                  <input
-                    v-model="mobileForm.mobile"
-                    type="tel"
-                    :placeholder="$t('login.pleaseInputMobile')"
-                    class="form-input mobile-input"
-                  />
-                </div>
-                <div class="input-divider"></div>
-                <div class="input-field">
-                  <span class="input-icon">
-                    <SafetyOutlined />
-                  </span>
-                  <input
-                    v-model="mobileForm.code"
-                    type="text"
-                    :placeholder="$t('login.pleaseInputCode')"
-                    class="form-input"
-                  />
-                  <button
-                    class="code-btn"
-                    :disabled="mobileCodeSending || mobileCountdown > 0"
-                    @click="sendMobileCode"
-                  >
-                    {{ mobileCountdown > 0 ? `${mobileCountdown}s` : $t('login.getCode') }}
-                  </button>
-                </div>
-                <div class="input-divider"></div>
-              </div>
-
-              <button
-                class="login-btn primary"
-                :disabled="loading"
-                @click="onMobileLogin"
-              >
-                <span
-                  v-if="loading"
-                  class="loading-spinner"
-                ></span>
-                {{ loading ? $t('login.loggingIn') : $t('login.login') }}
-              </button>
-            </div>
-
-            <div class="skip-login">
-              {{ $t('login.skip') }}
-              <a
-                class="skip-link"
-                @click="skipLogin"
-                >{{ $t('login.skipLogin') }}</a
-              >
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <a-form
-            name="login"
-            :label-col="{ span: 0 }"
-            :wrapper-col="{ span: 24 }"
-            autocomplete="off"
+        <div class="yixin-login-section">
+          <button
+            class="login-btn primary yixin-login-btn"
+            :disabled="externalLoginLoading"
+            @click="handleYixinLogin"
           >
-            <a-form-item>
-              <a-button
-                class="login-button"
-                type="primary"
-                html-type="submit"
-                :loading="externalLoginLoading"
-                @click="handleExternalLogin"
-              >
-                {{ $t('login.login') }}
-              </a-button>
-            </a-form-item>
-            <div class="skip-login">
-              {{ $t('login.skip') }}
-              <a
-                class="skip-link"
-                @click="skipLogin"
-                >{{ $t('login.skipLogin') }}</a
-              >
-            </div>
-          </a-form>
-        </template>
+            <span
+              v-if="externalLoginLoading"
+              class="loading-spinner"
+            ></span>
+            {{ $t('login.yixinLogin') }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { removeToken } from '@/utils/permission'
 import { useRouter } from 'vue-router'
-import { ref, onMounted, nextTick, onBeforeUnmount, reactive } from 'vue'
-import { GlobalOutlined, MailOutlined, SafetyOutlined, UserOutlined, LockOutlined, MobileOutlined } from '@ant-design/icons-vue'
+import { onBeforeUnmount, onMounted, nextTick, ref } from 'vue'
+import { GlobalOutlined } from '@ant-design/icons-vue'
 import type { MenuProps } from 'ant-design-vue'
-import { setUserInfo } from '@/utils/permission'
 import { message } from 'ant-design-vue'
-import { captureButtonClick, LoginFunnelEvents, LoginMethods, LoginFailureReasons } from '@/utils/telemetry'
+import { captureButtonClick, LoginFailureReasons, LoginFunnelEvents, LoginMethods } from '@/utils/telemetry'
 import { shortcutService } from '@/services/shortcutService'
+import { setCurrentYixinSession, type YixinSessionUserInfo } from '@/services/yixinSessionService'
 import config from '@renderer/config'
-import { sendEmailCode, emailLogin, userLogin, sendMobileCode as sendMobileCodeApi, mobileLogin } from '@/api/user/user'
 import { useI18n } from 'vue-i18n'
-import { useDeviceStore } from '@/store/useDeviceStore'
 import { isChineseEdition } from '@/utils/edition'
 import TitleBar from '@views/components/Header/titleBar.vue'
 
 const logger = createRendererLogger('auth.login')
 const { t, locale } = useI18n()
-const platform = ref<string>('')
-const isDev = ref(false)
-const loading = ref(false)
+const router = useRouter()
 const externalLoginLoading = ref(false)
-const codeSending = ref(false)
-const countdown = ref(0)
-const activeTab = ref('account') // default
-const deviceStore = useDeviceStore()
-const emailForm = reactive({
-  email: '',
-  code: ''
-})
-const mobileForm = reactive({
-  mobile: '',
-  code: ''
-})
-const accountForm = reactive({
-  username: '',
-  password: ''
-})
-const mobileCodeSending = ref(false)
-const mobileCountdown = ref(0)
-
-const checkUrlForAuthCallback = async () => {
-  const url = window.location.href
-  const urlObj = new URL(url)
-  if (urlObj.pathname.includes('auth/callback')) {
-    logger.debug('Auth callback detected', { url })
-    const userInfo = urlObj.searchParams.get('userInfo')
-    const method = urlObj.searchParams.get('method')
-
-    if (userInfo) {
-      const api = window.api as any
-      // Get protocol prefix dynamically based on edition
-      const protocolPrefix = await api.getProtocolPrefix()
-      const chatermUrl = `${protocolPrefix}auth/callback?userInfo=${userInfo}&method=${method || ''}&state=${urlObj.searchParams.get('state') || ''}`
-      if (platform.value === 'linux') {
-        logger.debug('Linux platform handling auth')
-        api.handleProtocolUrl(chatermUrl).catch((error: any) => {
-          logger.error('Handle protocol URL failed', { error: error })
-        })
-      }
-    }
-  }
-}
 
 const configLang: MenuProps['onClick'] = ({ key }) => {
   const lang = String(key)
   locale.value = lang
   localStorage.setItem('lang', lang)
 }
-const router = useRouter()
-const sendCode = async () => {
-  if (!emailForm.email) {
-    message.error(t('login.pleaseInputEmail'))
-    return
-  }
-  try {
-    codeSending.value = true
-    await sendEmailCode({ email: emailForm.email })
-    message.success(t('login.codeSent'))
-    countdown.value = 300
-    const timer = setInterval(() => {
-      countdown.value--
-      if (countdown.value <= 0) {
-        clearInterval(timer)
-      }
-    }, 1000)
-  } catch (err) {
-    message.error(t('login.codeSendFailed'))
-  } finally {
-    codeSending.value = false
-  }
-}
 
-const onAccountLogin = async () => {
-  if (!accountForm.username || !accountForm.password) {
-    message.error(t('login.pleaseInputUsernameAndPassword'))
-    return
-  }
-  try {
-    loading.value = true
-    const api = window.api as any
-    const localPlugins = await api.getPluginsVersion()
-    const res = await userLogin({
-      username: accountForm.username,
-      password: accountForm.password,
-      macAddress: deviceStore.getMacAddress,
-      localPlugins: localPlugins
-    })
-    if (res && (res as any).code === 200 && (res as any).data) {
-      // Check if device verification is required first
-      if ((res as any).data.needDeviceVerification === true) {
-        message.error(t('login.deviceVerificationRequired'))
-        return
-      }
-      // Then check if token exists
-      if ((res as any).data.token) {
-        localStorage.setItem('ctm-token', (res as any).data.token)
-        localStorage.setItem('jms-token', (res as any).data.jmsToken)
-        setUserInfo((res as any).data)
-        const api = window.api as any
-        const dbResult = await api.initUserDatabase({ uid: (res as any).data.uid })
-        if (!dbResult.success) {
-          message.error(t('login.databaseInitFailed'))
-          return
-        }
-
-        shortcutService.init()
-        await nextTick()
-        await router.replace({ path: '/', replace: true })
-      } else {
-        message.error(res && (res as any).Message ? (res as any).Message : t('login.loginFailed'))
-      }
-    } else {
-      message.error(res && (res as any).Message ? (res as any).Message : t('login.loginFailed'))
-    }
-  } catch (err: any) {
-    message.error(err?.response?.data?.message || err?.message || t('login.loginFailed'))
-  } finally {
-    loading.value = false
-  }
-}
-
-const onEmailLogin = async () => {
-  if (!emailForm.email || !emailForm.code) {
-    message.error(t('login.pleaseInputEmailAndCode'))
-    return
-  }
-  try {
-    loading.value = true
-    const api = window.api as any
-    const localPlugins = await api.getPluginsVersion()
-    const res = await emailLogin({
-      email: emailForm.email,
-      code: emailForm.code,
-      macAddress: deviceStore.getMacAddress,
-      localPlugins: localPlugins
-    })
-    if (res && (res as any).code === 200 && (res as any).data && (res as any).data.token) {
-      localStorage.setItem('ctm-token', (res as any).data.token)
-      localStorage.setItem('jms-token', (res as any).data.jmsToken)
-      setUserInfo((res as any).data)
-      const api = window.api as any
-      const dbResult = await api.initUserDatabase({ uid: (res as any).data.uid })
-      if (!dbResult.success) {
-        message.error(t('login.databaseInitFailed'))
-        return
-      }
-
-      shortcutService.init()
-      await nextTick()
-      await router.replace({ path: '/', replace: true })
-    } else {
-      message.error(res && (res as any).Message ? (res as any).Message : t('login.loginFailed'))
-    }
-  } catch (err: any) {
-    message.error(err?.response?.data?.message || err?.message || t('login.loginFailed'))
-  } finally {
-    loading.value = false
-  }
-}
-
-const sendMobileCode = async () => {
-  if (!mobileForm.mobile) {
-    message.error(t('login.pleaseInputMobile'))
-    return
-  }
-  // 验证手机号格式（中国手机号：1[3-9]xxxxxxxxx）
-  const mobileRegex = /^1[3-9]\d{9}$/
-  if (!mobileRegex.test(mobileForm.mobile)) {
-    message.error(t('login.invalidMobile'))
-    return
-  }
-  try {
-    mobileCodeSending.value = true
-    await sendMobileCodeApi({ mobile: mobileForm.mobile })
-    message.success(t('login.codeSent'))
-    mobileCountdown.value = 300
-    const timer = setInterval(() => {
-      mobileCountdown.value--
-      if (mobileCountdown.value <= 0) {
-        clearInterval(timer)
-      }
-    }, 1000)
-  } catch (err: any) {
-    message.error(err?.response?.data?.message || err?.message || t('login.loginFailed'))
-  } finally {
-    mobileCodeSending.value = false
-  }
-}
-
-const onMobileLogin = async () => {
-  if (!mobileForm.mobile || !mobileForm.code) {
-    message.error(t('login.pleaseInputMobileAndCode'))
-    return
-  }
-  try {
-    loading.value = true
-    const api = window.api as any
-    const localPlugins = await api.getPluginsVersion()
-    const res = await mobileLogin({
-      mobile: mobileForm.mobile,
-      code: mobileForm.code,
-      macAddress: deviceStore.getMacAddress,
-      localPlugins: localPlugins
-    })
-    if (res && (res as any).code === 200 && (res as any).data) {
-      // Check if device verification is required first
-      if ((res as any).data.needDeviceVerification === true) {
-        message.error(t('login.deviceVerificationRequired'))
-        return
-      }
-      // Then check if token exists
-      if ((res as any).data.token) {
-        localStorage.setItem('ctm-token', (res as any).data.token)
-        localStorage.setItem('jms-token', (res as any).data.jmsToken)
-        setUserInfo((res as any).data)
-        const api = window.api as any
-        const dbResult = await api.initUserDatabase({ uid: (res as any).data.uid })
-        if (!dbResult.success) {
-          message.error(t('login.databaseInitFailed'))
-          return
-        }
-
-        shortcutService.init()
-        await nextTick()
-        await router.replace({ path: '/', replace: true })
-      } else {
-        message.error(res && (res as any).Message ? (res as any).Message : t('login.loginFailed'))
-      }
-    } else {
-      message.error(res && (res as any).Message ? (res as any).Message : t('login.loginFailed'))
-    }
-  } catch (err: any) {
-    message.error(err?.response?.data?.message || err?.message || t('login.loginFailed'))
-  } finally {
-    loading.value = false
-  }
-}
-
-const skipLogin = async () => {
-  try {
-    await captureButtonClick(LoginFunnelEvents.SKIP_LOGIN, {
-      method: LoginMethods.GUEST
-    })
-    localStorage.removeItem('ctm-token')
-    localStorage.removeItem('jms-token')
-    localStorage.removeItem('userInfo')
-    localStorage.removeItem('login-skipped')
-    removeToken()
-    localStorage.setItem('login-skipped', 'true')
-    localStorage.setItem('ctm-token', 'guest_token')
-    const guestUserInfo = {
-      uid: 999999999,
-      username: 'guest',
-      name: 'Guest',
-      email: 'guest@chaterm.ai',
-      token: 'guest_token'
-    }
-    setUserInfo(guestUserInfo)
-    const api = window.api as any
-    const dbResult = await api.initUserDatabase({ uid: 999999999 })
-    if (!dbResult.success) {
-      logger.error('Guest database init failed', { error: dbResult.error })
-      message.error(t('login.initializationFailed'))
-      localStorage.removeItem('login-skipped')
-      localStorage.removeItem('ctm-token')
-      localStorage.removeItem('jms-token')
-      localStorage.removeItem('userInfo')
-      return
-    }
-    shortcutService.init()
-    await nextTick()
-    try {
-      await router.replace({ path: '/', replace: true })
-    } catch (error) {
-      logger.error('Route jump failed', { error: error })
-      message.error(t('login.routeNavigationFailed'))
-    }
-  } catch (error) {
-    logger.error('Skip login handle failed', { error: error })
-    message.error(t('login.operationFailed'))
-    localStorage.removeItem('login-skipped')
-    localStorage.removeItem('ctm-token')
-    localStorage.removeItem('jms-token')
-    localStorage.removeItem('userInfo')
-  }
-}
-
-const handleExternalLogin = async () => {
+const handleYixinLogin = async () => {
   try {
     externalLoginLoading.value = true
+    await captureButtonClick(LoginFunnelEvents.CLICK_LOGIN_BUTTON, {
+      method: LoginMethods.SSO
+    })
     const api = window.api as any
-    await api.openExternalLogin()
+    const result = api.openYixinLogin ? await api.openYixinLogin() : await api.openExternalLogin()
+    if (result?.success === false) {
+      throw new Error(result.error || t('login.externalLoginFailed'))
+    }
   } catch (err) {
-    logger.error('Start external login failed', { error: err })
-    message.error(t('login.externalLoginFailed'))
+    logger.error('Start YiXin login failed', { error: err })
+    message.error(err instanceof Error ? err.message : t('login.externalLoginFailed'))
+    await captureButtonClick(LoginFunnelEvents.LOGIN_FAILED, {
+      method: LoginMethods.SSO,
+      failure_reason: LoginFailureReasons.UNKNOWN_ERROR,
+      error_message: err instanceof Error ? err.message : String(err)
+    })
   } finally {
     externalLoginLoading.value = false
+  }
+}
+
+const handleExternalLoginError = async (_event: unknown, data: { error?: string }) => {
+  const errorMessage = data?.error || t('login.externalLoginFailed')
+  logger.error('YiXin login error', { error: errorMessage })
+  message.error(errorMessage)
+  await captureButtonClick(LoginFunnelEvents.LOGIN_FAILED, {
+    method: LoginMethods.SSO,
+    failure_reason: LoginFailureReasons.UNKNOWN_ERROR,
+    error_message: errorMessage
+  })
+}
+
+const handleExternalLoginSuccess = async (_event: unknown, data: { userInfo?: YixinSessionUserInfo; method?: string }) => {
+  const { userInfo, method = LoginMethods.SSO } = data
+  if (!userInfo?.token || !userInfo?.uid) {
+    message.error(t('login.loginProcessFailed'))
+    return
+  }
+
+  try {
+    setCurrentYixinSession(userInfo)
+
+    const api = window.api as any
+    const dbResult = await api.initUserDatabase({ uid: userInfo.uid })
+    if (!dbResult.success) {
+      logger.error('Database initialization failed', { error: dbResult.error })
+      await captureButtonClick(LoginFunnelEvents.LOGIN_FAILED, {
+        method,
+        failure_reason: LoginFailureReasons.DATABASE_ERROR,
+        error_message: dbResult.error
+      })
+      message.error(t('login.databaseInitFailed'))
+      return
+    }
+
+    shortcutService.init()
+    await captureButtonClick(LoginFunnelEvents.LOGIN_SUCCESS, { method })
+    await nextTick()
+    await router.replace('/')
+  } catch (error) {
+    logger.error('YiXin login handling failed', { error })
+    message.error(t('login.loginProcessFailed'))
+    await captureButtonClick(LoginFunnelEvents.LOGIN_FAILED, {
+      method,
+      failure_reason: LoginFailureReasons.UNKNOWN_ERROR,
+      error_message: error instanceof Error ? error.message : String(error)
+    })
   }
 }
 
 onMounted(async () => {
   const api = window.api as any
   api.mainWindowShow()
-  platform.value = await api.getPlatform()
-  isDev.value =
-    import.meta.env.MODE === 'development.cn' || import.meta.env.MODE === 'development.global' || ((window as any).api?.isE2E?.() ?? false)
   await captureButtonClick(LoginFunnelEvents.ENTER_LOGIN_PAGE)
-  if (!isDev.value) {
-    const ipcRenderer = (window as any).electron?.ipcRenderer
-    ipcRenderer?.on('external-login-success', async (_event, data) => {
-      const { userInfo, method } = data
-      try {
-        if (userInfo) {
-          localStorage.setItem('ctm-token', userInfo?.token)
-          localStorage.setItem('jms-token', userInfo?.jmsToken)
-          setUserInfo(userInfo)
 
-          const api = window.api as any
-          const dbResult = await api.initUserDatabase({ uid: userInfo.uid })
-          if (!dbResult.success) {
-            logger.error('Database initialization failed', { error: dbResult.error })
-            await captureButtonClick(LoginFunnelEvents.LOGIN_FAILED, {
-              method: method,
-              failure_reason: LoginFailureReasons.DATABASE_ERROR,
-              error_message: dbResult.error
-            })
-            return false
-          }
-
-          shortcutService.init()
-          await captureButtonClick(LoginFunnelEvents.LOGIN_SUCCESS, { method: method })
-          router.push('/')
-          return true
-        }
-        return false
-      } catch (error) {
-        logger.error('Login handle failed', { error: error })
-        message.error(t('login.loginProcessFailed'))
-        await captureButtonClick(LoginFunnelEvents.LOGIN_FAILED, {
-          method: method,
-          failure_reason: LoginFailureReasons.UNKNOWN_ERROR,
-          error_message: (error as any)?.message || 'Unknown error'
-        })
-        return false
-      }
-    })
-
-    if (platform.value === 'linux') {
-      checkUrlForAuthCallback()
-      window.addEventListener('popstate', checkUrlForAuthCallback)
-      window.addEventListener('focus', checkUrlForAuthCallback)
-    }
-  }
+  const ipcRenderer = (window as any).electron?.ipcRenderer
+  ipcRenderer?.on('external-login-error', handleExternalLoginError)
+  ipcRenderer?.on('external-login-success', handleExternalLoginSuccess)
 })
 
 onBeforeUnmount(() => {
-  if (!isDev.value) {
-    const ipcRenderer = (window as any).electron?.ipcRenderer
-    ipcRenderer?.removeAllListeners('external-login-success')
-    if (platform.value === 'linux') {
-      window.removeEventListener('popstate', checkUrlForAuthCallback)
-      window.removeEventListener('focus', checkUrlForAuthCallback)
-    }
-  }
+  const ipcRenderer = (window as any).electron?.ipcRenderer
+  ipcRenderer?.removeListener?.('external-login-success', handleExternalLoginSuccess)
+  ipcRenderer?.removeListener?.('external-login-error', handleExternalLoginError)
 })
 </script>
 
@@ -668,6 +190,35 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: center;
     -webkit-app-region: no-drag;
+  }
+
+  .yixin-login-section {
+    width: 100%;
+    margin-bottom: 16px;
+
+    .yixin-login-btn {
+      width: 100%;
+    }
+  }
+
+  .login-divider {
+    display: flex;
+    align-items: center;
+    margin: 12px 0;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 13px;
+
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    span {
+      padding: 0 12px;
+    }
   }
 
   .logo {

@@ -84,7 +84,7 @@ There is a saying that every agent fails all the time, but Chaterm helps you fix
 
   Combining user habits, local memory, and the current server context, the Agent recommends the most suitable commands, making terminal input smarter and more efficient.
 
-  Supports cross-device session synchronization and reduces mobile input costs through quick commands and voice interaction, making remote maintenance smoother.
+  Uses local quick commands and user-configured connections only; built-in Chaterm cloud account, sync, subscription, plugin store, and cloud speech services have been removed. Authentication is provided by YiXin SSO.
 
 - 🧩 **Knowledge Base**
 

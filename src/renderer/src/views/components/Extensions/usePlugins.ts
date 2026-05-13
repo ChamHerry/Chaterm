@@ -1,5 +1,4 @@
 import { computed, ref } from 'vue'
-import { listStorePlugins } from '@/api/plugin/plugin'
 
 const api = (window as any).api
 const logger = createRendererLogger('extensions')
@@ -178,23 +177,8 @@ const loadPlugins = async () => {
 }
 
 const loadStorePlugins = async () => {
-  try {
-    const res: any = await listStorePlugins()
-    const data = res?.data || res
-    const plugins = data?.plugins || []
-
-    storePlugins.value = plugins.map((p: any) => ({
-      pluginId: p.pluginId,
-      name: p.name,
-      description: p.description,
-      latestVersion: p.latestVersion,
-      isPrivate: p.isPrivate,
-      iconUrl: p.iconUrl,
-      installable: p.installable !== false
-    }))
-  } catch (e) {
-    logger.error('loadStorePlugins error', { error: e })
-  }
+  // The Chaterm plugin store has been removed in YiXin-only local mode.
+  storePlugins.value = []
 }
 
 const uninstallLocalPlugin = (pluginId: string) => {

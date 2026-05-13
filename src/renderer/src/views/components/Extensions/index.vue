@@ -147,7 +147,6 @@ import iconAlias from '@/assets/img/alias.svg'
 import iconJumpserver from '@/assets/img/jumpserver.svg'
 import { userConfigStore } from '@/services/userConfigStoreService'
 import eventBus from '@/utils/eventBus'
-import { getPluginDownload, getPluginIconUrl } from '@/api/plugin/plugin'
 import { convertFileLocalResourceSrc } from '@/utils/convertFileLocalResourceSrc'
 import { type DisplayPluginItem, usePluginStore } from './usePlugins'
 import { getActualTheme } from '@/utils/themeUtils'
@@ -210,15 +209,8 @@ const getIcons = async (item: DisplayPluginItem): Promise<string> => {
   }
   preloadedKeys.add(key)
 
-  try {
-    const url = await getPluginIconUrl(item.pluginId, item.latestVersion)
-    iconUrls[item.pluginId] = url
-    return url
-  } catch (e) {
-    logger.error('Preload icon failed', { pluginId: item.pluginId, error: e })
-    iconUrls[item.pluginId] = ''
-    return ''
-  }
+  iconUrls[item.pluginId] = ''
+  return ''
 }
 
 const preloadIcons = async (list: DisplayPluginItem[]): Promise<void> => {
@@ -465,28 +457,8 @@ const getIconSrc = (item: any) => {
   return blobUrl || ''
 }
 
-const installOrUpdateFromStore = async (pluginId: string, version: string) => {
-  const res: any = await getPluginDownload(pluginId, version)
-  const data: ArrayBuffer = res
-
-  const disposition = res.headers?.['content-disposition'] || res.headers?.['Content-Disposition']
-  let fileName = ''
-  if (disposition) {
-    const match = /filename="?([^"]+)"?/.exec(disposition)
-    if (match && match[1]) {
-      fileName = decodeURIComponent(match[1])
-    }
-  }
-  if (!fileName) {
-    fileName = `${pluginId}-${version || 'latest'}.chaterm`
-  }
-
-  await api.installPluginFromBuffer({
-    pluginId,
-    version,
-    fileName,
-    data
-  })
+const installOrUpdateFromStore = async (_pluginId: string, _version: string) => {
+  throw new Error(t('extensions.notFoundInStore'))
 }
 
 const installLoadingMap = ref<Record<string, boolean>>({})

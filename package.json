@@ -44,7 +44,8 @@
     "test:coverage:renderer": "vitest --project=renderer-process --coverage",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:e2e:ui": "playwright test --config playwright.config.ts --ui",
-    "test:e2e:headed": "playwright test --config playwright.config.ts --headed"
+    "test:e2e:headed": "playwright test --config playwright.config.ts --headed",
+    "check:no-chaterm-remote": "node scripts/check-no-chaterm-remote.js"
   },
   "lint-staged": {
     "*.{js,jsx,.cjs,mjs,ts,tsx,cts,mts,vue}": [
@@ -143,7 +144,7 @@
     "@vue/test-utils": "^2.4.10",
     "ant-design-vue": "^4.2.6",
     "cross-env": "^10.1.0",
-    "electron": "^41.3.0",
+    "electron": "^41.5.2",
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "eslint": "^10.3.0",

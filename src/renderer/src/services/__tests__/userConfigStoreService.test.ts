@@ -19,6 +19,14 @@ vi.mock('@/api/sync/sync', () => ({
   updateUserTermConfig: mockUpdateUserTermConfig
 }))
 
+vi.mock('@/locales', () => ({
+  default: {
+    global: {
+      locale: { value: 'zh-CN' }
+    }
+  }
+}))
+
 vi.mock('@/store/userConfigStore', () => ({
   userConfigStore: mockUserConfigPiniaStore
 }))

@@ -959,12 +959,6 @@ const api = {
   removeAssetFromFolder,
   getAssetsInFolder,
   getPathForFile: (file: File) => webUtils.getPathForFile(file), // Get the real path from File instead of using file.path
-  setDataSyncEnabled: (enabled: boolean) => ipcRenderer.invoke('data-sync:set-enabled', enabled),
-  // Chat Sync V2
-  chatSyncSetEnabled: (enabled: boolean) => ipcRenderer.invoke('chat-sync:set-enabled', enabled),
-  chatSyncGetStatus: () => ipcRenderer.invoke('chat-sync:get-status'),
-  chatSyncSyncNow: () => ipcRenderer.invoke('chat-sync:sync-now'),
-  chatSyncSetAiTabVisible: (visible: boolean) => ipcRenderer.invoke('chat-sync:set-ai-tab-visible', visible),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   unmaximizeWindow: () => ipcRenderer.invoke('window:unmaximize'),
   isMaximized: () => ipcRenderer.invoke('window:is-maximized'),
@@ -1307,6 +1301,7 @@ const api = {
     return () => ipcRenderer.removeListener('jumpserver:status-update', listener)
   },
   openExternalLogin: () => ipcRenderer.invoke('open-external-login'),
+  openYixinLogin: () => ipcRenderer.invoke('open-yixin-login'),
 
   // sftp
   onTransferProgress: (callback: (data: { id: string; remotePath: string; bytes: number; total: number; type: 'download' | 'upload' }) => void) => {
@@ -1365,10 +1360,6 @@ const api = {
     ipcRenderer.on('kb:transfer-progress', listener)
     return () => ipcRenderer.removeListener('kb:transfer-progress', listener)
   },
-  kbSyncGetStatus: () => ipcRenderer.invoke('kb:sync-get-status'),
-  kbSyncLastTime: () => ipcRenderer.invoke('kb:sync-last-time'),
-  kbSyncLastResults: () => ipcRenderer.invoke('kb:sync-last-results'),
-  getKbCloudStorage: () => ipcRenderer.invoke('kb:get-cloud-storage'),
 
   agentEnableAndConfigure: (opts: { enabled: boolean }) => ipcRenderer.invoke('ssh:agent:enable-and-configure', opts),
   addKey: (opts: { keyData: string; passphrase?: string; comment?: string }) => ipcRenderer.invoke('ssh:agent:add-key', opts),

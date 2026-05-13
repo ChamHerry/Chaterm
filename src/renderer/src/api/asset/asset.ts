@@ -1,48 +1,19 @@
-import request from '@/utils/request'
-
-const urls = {
-  assetList: '/asset/routes',
-  favorite: '/asset/favorite',
-  workspace: '/asset/user-work-space',
-  alias: '/asset/alias'
-}
-const termProxyApi = {
-  TermFileContent: '/term-api/cmd/list'
-}
-export function getListCmd(params) {
-  return request({
-    method: 'get',
-    url: `${termProxyApi.TermFileContent}?&uuid=${params}`
-  })
+export function getListCmd(_params?: unknown) {
+  return Promise.resolve({ data: [] })
 }
 
-export function getassetMenu(params) {
-  return request({
-    method: 'get',
-    url: urls.assetList,
-    params: params
-  })
+export function getassetMenu(_params?: unknown) {
+  return Promise.resolve({ data: [] })
 }
 
-export function setUserfavorite(data) {
-  return request({
-    method: 'post',
-    url: urls.favorite,
-    data: data
-  })
+export function setUserfavorite(_data?: unknown) {
+  return Promise.resolve({ data: null })
 }
 
 export function getUserWorkSpace() {
-  return request({
-    method: 'get',
-    url: urls.workspace
-  })
+  return Promise.resolve({ data: [] })
 }
 
-export function setAlias(data) {
-  return request({
-    method: 'post',
-    url: urls.alias,
-    data: data
-  })
+export function setAlias(_data?: unknown) {
+  return Promise.resolve({ data: null })
 }

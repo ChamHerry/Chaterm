@@ -1,151 +1,50 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-const {
-  mockGetStoredUserConfigSnapshot,
-  mockResolveDataSyncPreference,
-  mockChatSyncInitialize,
-  mockChatSyncEnable,
-  mockChatSyncDisable,
-  mockChatSyncReset,
-  mockUserConfigSyncInitialize,
-  mockUserConfigSyncStop,
-  mockUserConfigSyncReset,
-  mockEditorConfigSyncInitialize,
-  mockEditorConfigSyncStop,
-  mockEditorConfigSyncReset,
-  mockUserRulesSyncInitialize,
-  mockUserRulesSyncStop,
-  mockUserRulesSyncReset,
-  mockAiPreferencesSyncInitialize,
-  mockAiPreferencesSyncStop,
-  mockAiPreferencesSyncReset
-} = vi.hoisted(() => ({
-  mockGetStoredUserConfigSnapshot: vi.fn(),
-  mockResolveDataSyncPreference: vi.fn(),
-  mockChatSyncInitialize: vi.fn(),
-  mockChatSyncEnable: vi.fn(),
-  mockChatSyncDisable: vi.fn(),
-  mockChatSyncReset: vi.fn(),
-  mockUserConfigSyncInitialize: vi.fn(),
-  mockUserConfigSyncStop: vi.fn(),
-  mockUserConfigSyncReset: vi.fn(),
-  mockEditorConfigSyncInitialize: vi.fn(),
-  mockEditorConfigSyncStop: vi.fn(),
-  mockEditorConfigSyncReset: vi.fn(),
-  mockUserRulesSyncInitialize: vi.fn(),
-  mockUserRulesSyncStop: vi.fn(),
-  mockUserRulesSyncReset: vi.fn(),
-  mockAiPreferencesSyncInitialize: vi.fn(),
-  mockAiPreferencesSyncStop: vi.fn(),
-  mockAiPreferencesSyncReset: vi.fn()
-}))
-
-vi.mock('../userConfigStoreService', () => ({
-  getStoredUserConfigSnapshot: mockGetStoredUserConfigSnapshot,
-  resolveDataSyncPreference: mockResolveDataSyncPreference
-}))
-
-vi.mock('../chatSyncService', () => ({
-  chatSyncService: {
-    initialize: mockChatSyncInitialize,
-    enable: mockChatSyncEnable,
-    disable: mockChatSyncDisable,
-    reset: mockChatSyncReset
-  }
-}))
-
-vi.mock('../userConfigSyncService', () => ({
-  userConfigSyncService: {
-    initialize: mockUserConfigSyncInitialize,
-    stop: mockUserConfigSyncStop,
-    reset: mockUserConfigSyncReset
-  }
-}))
-
-vi.mock('../editorConfigSyncService', () => ({
-  editorConfigSyncService: {
-    initialize: mockEditorConfigSyncInitialize,
-    stop: mockEditorConfigSyncStop,
-    reset: mockEditorConfigSyncReset
-  }
-}))
-
-vi.mock('../userRulesSyncService', () => ({
-  userRulesSyncService: {
-    initialize: mockUserRulesSyncInitialize,
-    stop: mockUserRulesSyncStop,
-    reset: mockUserRulesSyncReset
-  }
-}))
-
-vi.mock('../aiPreferencesSyncService', () => ({
-  aiPreferencesSyncService: {
-    initialize: mockAiPreferencesSyncInitialize,
-    stop: mockAiPreferencesSyncStop,
-    reset: mockAiPreferencesSyncReset
-  }
-}))
+import { ChatSyncService } from '../chatSyncService'
+import { DataSyncService } from '../dataSyncService'
 
 describe('DataSyncService', () => {
-  beforeEach(() => {
-    vi.resetModules()
-    vi.clearAllMocks()
-    ;(window as any).api = {
-      setDataSyncEnabled: vi.fn(async () => ({ success: true }))
-    }
+  it('keeps data sync local-only and disabled', async () => {
+    const service = new DataSyncService()
 
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => {
-      if (key === 'login-skipped') return null
-      if (key === 'ctm-token') return 'test-token'
-      return null
-    })
+    await service.initialize()
+    expect(service.getInitializationStatus()).toBe(true)
 
-    mockGetStoredUserConfigSnapshot.mockResolvedValue({})
-    mockResolveDataSyncPreference.mockReturnValue('enabled')
-    mockChatSyncInitialize.mockResolvedValue(undefined)
-    mockChatSyncEnable.mockResolvedValue(true)
-    mockChatSyncDisable.mockResolvedValue(true)
-    mockUserConfigSyncInitialize.mockResolvedValue(undefined)
-    mockEditorConfigSyncInitialize.mockResolvedValue(undefined)
-    mockUserRulesSyncInitialize.mockResolvedValue(undefined)
-    mockAiPreferencesSyncInitialize.mockResolvedValue(undefined)
+    await expect(service.enableDataSync()).resolves.toBe(false)
+    expect(service.getInitializationStatus()).toBe(true)
+
+    await expect(service.disableDataSync()).resolves.toBe(true)
+    expect(service.getInitializationStatus()).toBe(false)
   })
 
-  it('enables chat sync and all config sync services when dataSync is enabled', async () => {
-    const { dataSyncService } = await import('../dataSyncService')
+  it('resets local data sync state without IPC side effects', async () => {
+    const service = new DataSyncService()
 
-    const ok = await dataSyncService.enableDataSync()
+    await service.initialize()
+    service.reset()
 
-    expect(ok).toBe(true)
-    expect((window as any).api.setDataSyncEnabled).toHaveBeenCalledWith(true)
-    expect(mockChatSyncEnable).toHaveBeenCalledTimes(1)
-    expect(mockUserConfigSyncInitialize).toHaveBeenCalledTimes(1)
-    expect(mockEditorConfigSyncInitialize).toHaveBeenCalledTimes(1)
-    expect(mockUserRulesSyncInitialize).toHaveBeenCalledTimes(1)
-    expect(mockAiPreferencesSyncInitialize).toHaveBeenCalledTimes(1)
+    expect(service.getInitializationStatus()).toBe(false)
+  })
+})
+
+describe('ChatSyncService', () => {
+  it('keeps chat sync local-only and disabled', async () => {
+    const service = new ChatSyncService()
+
+    await service.initialize()
+    expect(service.getInitializationStatus()).toBe(true)
+
+    await expect(service.enable()).resolves.toBe(false)
+    await expect(service.getStatus()).resolves.toEqual({ enabled: false })
+    await expect(service.syncNow()).resolves.toBe(false)
+
+    await expect(service.disable()).resolves.toBe(true)
+    expect(service.getInitializationStatus()).toBe(false)
   })
 
-  it('disables chat sync and stops all config sync services when dataSync is disabled', async () => {
-    const { dataSyncService } = await import('../dataSyncService')
+  it('ignores AI tab visibility updates after cloud chat sync removal', async () => {
+    const service = new ChatSyncService()
 
-    const ok = await dataSyncService.disableDataSync()
-
-    expect(ok).toBe(true)
-    expect((window as any).api.setDataSyncEnabled).toHaveBeenCalledWith(false)
-    expect(mockChatSyncDisable).toHaveBeenCalledTimes(1)
-    expect(mockUserConfigSyncStop).toHaveBeenCalledTimes(1)
-    expect(mockEditorConfigSyncStop).toHaveBeenCalledTimes(1)
-    expect(mockUserRulesSyncStop).toHaveBeenCalledTimes(1)
-    expect(mockAiPreferencesSyncStop).toHaveBeenCalledTimes(1)
-  })
-
-  it('does not initialize chat sync when dataSync preference is disabled at startup', async () => {
-    mockResolveDataSyncPreference.mockReturnValue('disabled')
-
-    const { dataSyncService } = await import('../dataSyncService')
-    await dataSyncService.initialize()
-
-    expect(mockChatSyncInitialize).not.toHaveBeenCalled()
-    expect(mockChatSyncEnable).not.toHaveBeenCalled()
+    await expect(service.setAiTabVisible(true)).resolves.toBeUndefined()
   })
 })

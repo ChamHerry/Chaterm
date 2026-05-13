@@ -8,7 +8,9 @@ export const userInfoStore = defineStore('userInfo', {
       avatar: '',
       registrationType: '',
       token: '',
-      uid: 0
+      uid: 0,
+      username: '',
+      mobile: ''
     },
     stashMenu: ''
   }),
@@ -26,7 +28,9 @@ export const userInfoStore = defineStore('userInfo', {
         avatar: '',
         registrationType: '',
         token: '',
-        uid: 0
+        uid: 0,
+        username: '',
+        mobile: ''
       }
     }
   },
