@@ -11,10 +11,7 @@ extraResources:
     to: 'edition-config/'
     filter: '**/*.json'
 
-publish:
-  provider: generic
-  url: https://static-download.chaterm.net/
-  channel: latest
+# Auto update is temporarily disabled for YiXin-only builds.
 
 win:
   artifactName: ${name}-${version}-setup-${arch}.${ext}

@@ -98,9 +98,6 @@ linux:
   category: Utility
   artifactName: ${name}-${version}-linux-${arch}.${ext}
 npmRebuild: true
-publish:
-  provider: generic
-  url: https://chaterm-static.intsig.net/download/
-  channel: latest
+# Auto update is temporarily disabled for YiXin-only builds.
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

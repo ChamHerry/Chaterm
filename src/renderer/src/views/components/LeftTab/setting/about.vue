@@ -135,9 +135,15 @@ const handleCheckUpdate = async () => {
       const info = await api.checkUpdate()
       logger.debug('Received update check result', {
         event: 'settings.about.update.check.result',
+        disabled: Boolean(info?.disabled),
         hasVersionInfo: Boolean(info?.versionInfo),
         hasUpdateInfo: Boolean(info?.updateInfo)
       })
+
+      if (info?.disabled) {
+        btnText.value = `${t('about.checkUpdate')} (${t('mcp.disabled')})`
+        return null
+      }
 
       // Handle different response structures
       if (info && info.versionInfo) {

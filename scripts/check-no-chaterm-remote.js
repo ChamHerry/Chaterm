@@ -3,10 +3,13 @@ const fs = require('fs')
 const path = require('path')
 
 const repoRoot = path.resolve(__dirname, '..')
-const scanRoots = ['src', 'build', 'electron.vite.config.ts']
+const scanRoots = ['src', 'build', 'electron.vite.config.ts', 'electron-builder.yml', 'electron-builder.cn.yml', 'electron-builder.global.yml']
 const forbiddenPatterns = [
   /api8\.chaterm\.net/,
   /api\.chaterm\.net/,
+  /static-download8\.chaterm\.net/,
+  /static-download\.chaterm\.net/,
+  /chaterm-static\.intsig\.net/,
   /login\.chaterm\.cn/,
   /auth\.chaterm\.ai/,
   /demo\.chaterm\.ai/,

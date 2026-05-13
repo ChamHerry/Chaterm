@@ -147,7 +147,11 @@ const switchIcon = (dir, value) => {
 const checkVersion = async () => {
   try {
     const info = await api.checkUpdate()
-    logger.info('Update check result', { info: String(info) })
+    logger.info('Update check result', { disabled: Boolean(info?.disabled), info: String(info) })
+
+    if (info?.disabled) {
+      return
+    }
 
     // Check if update is available based on the actual response structure
     if (info && (info.isUpdateAvailable || info.updateInfo)) {

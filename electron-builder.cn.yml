@@ -11,10 +11,7 @@ extraResources:
     to: 'edition-config/'
     filter: '**/*.json'
 
-publish:
-  provider: generic
-  url: https://static-download8.chaterm.net/
-  channel: latest
+# Auto update is temporarily disabled for YiXin-only builds.
 
 win:
   executableName: Chaterm CN
