@@ -96,6 +96,105 @@ Search:
       })
     })
 
+    describe('parse JumpServer table variants', () => {
+      it('should parse asset list without organization column', () => {
+        const output = `
+  ID | NAME        | ADDRESS      | PLATFORM | COMMENT
+-----+-------------+--------------+----------+----------------
+  1  | app-01      | 192.0.2.11   | Linux    | application
+  2  | db-01       | 192.0.2.12   | Linux    |
+Page: 1, Count: 15, Total Page: 1, Total Count: 2
+Search:
+`
+        const result = parseJumpserverOutput(output)
+
+        expect(result.assets).toHaveLength(2)
+        expect(result.assets[0]).toMatchObject({
+          id: 1,
+          name: 'app-01',
+          address: '192.0.2.11',
+          platform: 'Linux',
+          organization: '',
+          comment: 'application'
+        })
+      })
+
+      it('should parse localized IP based asset headers', () => {
+        const output = `
+  ID | 主机名      | IP           | 平台     | 备注
+-----+-------------+--------------+----------+----------------
+  1  | app-01      | 192.0.2.21   | Linux    | 应用节点
+页码：1，每页行数：15，总页数：1，总数量：1
+搜索：
+`
+        const result = parseJumpserverOutput(output)
+
+        expect(result.assets).toHaveLength(1)
+        expect(result.assets[0]).toMatchObject({
+          id: 1,
+          name: 'app-01',
+          address: '192.0.2.21',
+          platform: 'Linux',
+          comment: '应用节点'
+        })
+      })
+
+      it('should parse current JumpServer host/IP/comment table', () => {
+        const output = `
+ID    | 主机名                                                                    | IP                             | 备注                   
+--------+---------------------------------------------------------------------------+--------------------------------+------------------------
+  1     | 10.200.2.201-aipaas                                                       | 10.200.2.201                   |                        
+  2     | 10.208.10.3                                                               | 10.208.10.3                    |                        
+  46    | 翠湖dw-10.88.215.201                                                      | 10.88.215.201                  |                        
+页码：1，每页行数：46，总页数：2，总数量：53
+提示：输入资产ID直接登录，二级搜索使用 // + 字段，如：//192 上一页：b 下一页：n
+搜索：
+[Host]>
+`
+        const result = parseJumpserverOutput(output)
+
+        expect(result.assets).toHaveLength(3)
+        expect(result.assets[0]).toEqual({
+          id: 1,
+          name: '10.200.2.201-aipaas',
+          address: '10.200.2.201',
+          platform: '',
+          organization: '',
+          comment: ''
+        })
+        expect(result.assets[2]).toMatchObject({
+          id: 46,
+          name: '翠湖dw-10.88.215.201',
+          address: '10.88.215.201'
+        })
+        expect(result.pagination).toEqual({
+          currentPage: 1,
+          totalPages: 2
+        })
+      })
+
+      it('should parse asset list with extra columns before organization and comment', () => {
+        const output = `
+  ID | NAME        | ADDRESS      | PLATFORM | PROTOCOLS | ORGANIZATION | COMMENT
+-----+-------------+--------------+----------+-----------+--------------+----------------
+  1  | app-01      | 192.0.2.31   | Linux    | ssh       | Default      | application
+Page: 1, Count: 15, Total Page: 1, Total Count: 1
+Search:
+`
+        const result = parseJumpserverOutput(output)
+
+        expect(result.assets).toHaveLength(1)
+        expect(result.assets[0]).toEqual({
+          id: 1,
+          name: 'app-01',
+          address: '192.0.2.31',
+          platform: 'Linux',
+          organization: 'Default',
+          comment: 'application'
+        })
+      })
+    })
+
     describe('edge cases', () => {
       it('empty output should return empty assets and default pagination', () => {
         const result = parseJumpserverOutput('')

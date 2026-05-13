@@ -166,25 +166,21 @@
               >
                 <Workspace
                   v-if="currentMenu == 'workspace'"
-                  :toggle-sidebar="toggleSideBar"
                   @change-company="changeCompany"
                   @current-click-server="currentClickServer"
                   @open-user-tab="openUserTab"
                 />
                 <Extensions
                   v-else-if="currentMenu == 'extensions'"
-                  :toggle-sidebar="toggleSideBar"
                   @open-user-tab="openUserTab"
                 />
                 <Assets
                   v-else-if="currentMenu == 'assets'"
                   ref="assetsRef"
-                  :toggle-sidebar="toggleSideBar"
                   @open-user-tab="openUserTab"
                 />
                 <Files
                   v-else-if="currentMenu == 'files'"
-                  :toggle-sidebar="toggleSideBar"
                   @open-user-tab="openUserTab"
                 />
                 <Snippets v-else-if="currentMenu == 'snippets'" />

@@ -29,50 +29,126 @@ export interface JumpServerUser {
 function parseAssets(output: string): Asset[] {
   const assets: Asset[] = []
   const lines = output.split('\n')
-  const assetRegex = /^\s*(\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*$/
 
   let foundAssetHeader = false
+  let headers: string[] = []
+
+  const splitColumns = (line: string): string[] => line.split('|').map((column) => column.trim())
+
+  const isSeparator = (line: string): boolean => /^\s*-{2,}\+/.test(line)
+
+  const isPromptLine = (line: string): boolean => {
+    const trimmed = line.trim()
+    return /^(Page:|页码：|提示：|Enter ID|Search:|搜索：|\[Host\]>|Tips:|Back:|ID>)/i.test(trimmed)
+  }
+
+  const hasAddressLikeHeader = (column: string): boolean => {
+    const normalized = column.trim().toUpperCase()
+    return (
+      normalized === 'ADDRESS' ||
+      normalized === 'IP' ||
+      normalized === 'HOST' ||
+      normalized.includes('ADDRESS') ||
+      /^IP(V[46])?$/.test(normalized) ||
+      column.includes('地址') ||
+      column.includes('主机地址')
+    )
+  }
+
+  const hasNameLikeHeader = (column: string): boolean => {
+    const normalized = column.trim().toUpperCase()
+    return normalized === 'NAME' || normalized === 'HOSTNAME' || normalized.includes('NAME') || column.includes('名称') || column.includes('主机')
+  }
+
+  const findHeaderIndex = (predicates: Array<(column: string) => boolean>): number => {
+    for (const predicate of predicates) {
+      const index = headers.findIndex(predicate)
+      if (index >= 0) return index
+    }
+    return -1
+  }
+
+  const isAssetHeader = (line: string): boolean => {
+    if (!line.includes('|')) return false
+    const columns = splitColumns(line)
+    const normalizedColumns = columns.map((column) => column.toUpperCase())
+    const hasId = normalizedColumns.includes('ID')
+    const looksLikeUserTable = normalizedColumns.includes('USERNAME') && !columns.some(hasAddressLikeHeader)
+
+    if (!hasId || looksLikeUserTable) return false
+
+    return columns.some(hasAddressLikeHeader) || columns.some(hasNameLikeHeader)
+  }
+
+  const isLikelyAddress = (value: string): boolean => {
+    const normalized = value.trim()
+    if (!normalized || /\s/.test(normalized)) return false
+    return (
+      /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized) ||
+      (normalized.includes(':') && /^[0-9a-f:]+$/i.test(normalized)) ||
+      /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(normalized)
+    )
+  }
+
+  const valueAt = (columns: string[], index: number, fallback = ''): string => {
+    return index >= 0 && index < columns.length ? columns[index].trim() : fallback
+  }
 
   for (const line of lines) {
     // Only detect header if not found yet
     if (!foundAssetHeader) {
-      const upperLine = line.toUpperCase()
-
-      // Try Chinese header first
-      if (line.includes('ID') && (line.includes('名称') || line.includes('地址'))) {
+      if (isAssetHeader(line)) {
         foundAssetHeader = true
+        headers = splitColumns(line)
         continue
       }
 
-      // Fallback to English header - use ADDRESS to distinguish from user table
-      if (upperLine.includes('ID') && upperLine.includes('ADDRESS') && !upperLine.includes('USERNAME')) {
-        foundAssetHeader = true
-        continue
-      }
-
-      // Generic separator detection
-      if (line.includes('-----+--')) {
+      // Generic separator detection fallback for stripped headers.
+      if (isSeparator(line)) {
         foundAssetHeader = true
         continue
       }
     }
 
     if (foundAssetHeader) {
-      const match = line.match(assetRegex)
-      if (match) {
-        try {
-          const asset: Asset = {
-            id: parseInt(match[1].trim()),
-            name: match[2].trim(),
-            address: match[3].trim(),
-            platform: match[4].trim(),
-            organization: match[5].trim(),
-            comment: match[6].trim()
-          }
-          assets.push(asset)
-        } catch (e) {
-          logger.debug('Failed to parse asset line', { event: 'jumpserver.parser.asset.error', error: e })
+      if (!line.trim() || isSeparator(line)) continue
+      if (isPromptLine(line)) break
+
+      const columns = splitColumns(line)
+      const id = parseInt(columns[0], 10)
+      if (!Number.isFinite(id) || columns.length < 3) continue
+
+      try {
+        const nameIndex = findHeaderIndex([hasNameLikeHeader])
+        let addressIndex = findHeaderIndex([hasAddressLikeHeader])
+        if (addressIndex < 0) {
+          const inferredAddressIndex = columns.findIndex((column, index) => index > 0 && isLikelyAddress(column))
+          addressIndex = inferredAddressIndex >= 0 ? inferredAddressIndex : 2
         }
+
+        const platformIndex = findHeaderIndex([(column) => column.toUpperCase().includes('PLATFORM') || column.includes('平台')])
+        const organizationIndex = findHeaderIndex([
+          (column) => column.toUpperCase().includes('ORGANIZATION') || column.toUpperCase() === 'ORG' || column.includes('组织')
+        ])
+        const commentIndex = findHeaderIndex([
+          (column) =>
+            column.toUpperCase().includes('COMMENT') ||
+            column.toUpperCase().includes('DESCRIPTION') ||
+            column.includes('备注') ||
+            column.includes('描述')
+        ])
+
+        const asset: Asset = {
+          id,
+          name: valueAt(columns, nameIndex >= 0 ? nameIndex : 1),
+          address: valueAt(columns, addressIndex),
+          platform: platformIndex >= 0 ? valueAt(columns, platformIndex) : headers.length > 0 ? '' : valueAt(columns, 3),
+          organization: organizationIndex >= 0 ? valueAt(columns, organizationIndex) : headers.length > 0 ? '' : valueAt(columns, 4),
+          comment: valueAt(columns, commentIndex >= 0 ? commentIndex : columns.length > 5 ? columns.length - 1 : 5)
+        }
+        assets.push(asset)
+      } catch (e) {
+        logger.debug('Failed to parse asset line', { event: 'jumpserver.parser.asset.error', error: e })
       }
     }
   }
