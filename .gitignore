@@ -36,3 +36,5 @@ test_data/
 coverage/
 .Trae/
 .worktrees/
+.opensdd/
+add_jumpserver_pubkey.sh
