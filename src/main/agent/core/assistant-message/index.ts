@@ -11,8 +11,6 @@ import { registeredToolNames, type ToolUseName as RegistryToolUseName } from '..
 
 export type AssistantMessageContent = TextContent | ToolUse
 
-export { parseAssistantMessageV2 } from './parse-assistant-message'
-
 export interface TextContent {
   type: 'text'
   content: string
@@ -90,6 +88,8 @@ export type ToolParamName = (typeof toolParamNames)[number]
 export interface ToolUse {
   type: 'tool_use'
   name: ToolUseName
+  id?: string
+  input?: Record<string, unknown>
   // params is a partial record, allowing only some or none of the possible parameters to be used
   params: Partial<Record<ToolParamName, string>>
   partial: boolean

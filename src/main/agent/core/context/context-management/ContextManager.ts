@@ -9,6 +9,7 @@ import { getFormatResponse } from '../../prompts/responses'
 import { saveContextHistoryStorage, ensureTaskExists, getContextHistoryStorage } from '../../storage/disk'
 import { ChatermApiReqInfo, ChatermMessage } from '../../../shared/ExtensionMessage'
 import { ApiHandler } from '../../../api'
+import { createTextOnlyRequest } from '../../../api/tools'
 import { Anthropic } from '@anthropic-ai/sdk'
 const logger = createLogger('agent')
 
@@ -335,7 +336,7 @@ export class ContextManager {
         }
       ]
 
-      const stream = api.createMessage(this.responseFormatter.preTruncationSummaryPrompt(), summaryMessages)
+      const stream = api.createMessage(createTextOnlyRequest(this.responseFormatter.preTruncationSummaryPrompt(), summaryMessages))
       // Collect the full response with a 30-second timeout.
       // On timeout, close the stream so it stops consuming API resources.
       let timedOut = false

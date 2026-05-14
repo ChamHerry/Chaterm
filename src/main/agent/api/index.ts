@@ -4,7 +4,6 @@
 // Copyright (c) 2025 cline Authors, All rights reserved.
 // Licensed under the Apache License, Version 2.0
 
-import { Anthropic } from '@anthropic-ai/sdk'
 import { ApiConfiguration, ModelInfo, liteLlmModelInfoSaneDefaults } from '../shared/api'
 import { AwsBedrockHandler } from './providers/bedrock'
 import { LiteLlmHandler } from './providers/litellm'
@@ -13,9 +12,10 @@ import { OpenAiHandler } from './providers/openai'
 import { AnthropicHandler } from './providers/anthropic'
 import { OllamaHandler } from './providers/ollama'
 import { ApiStream, ApiStreamUsageChunk } from './transform/stream'
+import type { ApiCreateMessageRequest } from './tools'
 
 export interface ApiHandler {
-  createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream
+  createMessage(request: ApiCreateMessageRequest): ApiStream
   getModel(): { id: string; info: ModelInfo }
   getApiStreamUsage?(): Promise<ApiStreamUsageChunk | undefined>
   validateApiKey(): Promise<{ isValid: boolean; error?: string }>
@@ -28,7 +28,8 @@ export interface SingleCompletionHandler {
 class MockApiHandler implements ApiHandler {
   private lastUsage?: ApiStreamUsageChunk
 
-  async *createMessage(_systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  async *createMessage(request: ApiCreateMessageRequest): ApiStream {
+    const { messages } = request
     const last = messages[messages.length - 1]
     const lastText =
       typeof last?.content === 'string'

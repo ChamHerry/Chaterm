@@ -46,6 +46,16 @@
           <span class="timer-text"> {{ $t('userSelection.remainingTime') }}: {{ Math.ceil(userSelectionTimeRemaining / 1000) }}s </span>
         </div>
 
+        <div
+          v-if="currentTargetAssetUuid"
+          class="remember-section"
+        >
+          <a-checkbox v-model:checked="rememberSelection">
+            {{ $t('userSelection.rememberSelection') }}
+          </a-checkbox>
+          <span class="remember-hint">{{ $t('userSelection.rememberSelectionHint') }}</span>
+        </div>
+
         <div class="action-section">
           <a-button
             class="action-btn cancel-btn"
@@ -83,8 +93,10 @@ import {
   userSelectionError,
   userList,
   selectedUserId,
+  currentTargetAssetUuid,
   userSelectionTimeRemaining,
   isSubmitting,
+  rememberSelection,
   handleUserSelect,
   submitUserSelection,
   cancelUserSelection
@@ -198,6 +210,18 @@ onUnmounted(() => {
 .timer-text {
   color: var(--text-color-secondary-light);
   font-size: 12px;
+}
+
+.remember-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.remember-hint {
+  color: var(--text-color-secondary-light);
+  font-size: 11px;
 }
 
 .action-section {

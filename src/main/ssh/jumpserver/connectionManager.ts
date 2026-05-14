@@ -137,7 +137,13 @@ const attemptJumpServerConnection = async (
                 sftpError: 'SFTP connection failed'
               })
             }
-            setupJumpServerInteraction(newStream, connectionInfo, connectionId, jumpserverUuid, conn, event, sendStatusUpdate, resolve, reject)
+            setupJumpServerInteraction(newStream, connectionInfo, connectionId, jumpserverUuid, conn, event, sendStatusUpdate, resolve, reject, {
+              selectedUserId: existingData.navigationPath.selectedUserId,
+              selectedUsername: existingData.navigationPath.selectedUsername,
+              selectedUserName: existingData.navigationPath.selectedUserName,
+              needsPassword: existingData.navigationPath.needsPassword,
+              password: existingData.navigationPath.password
+            })
           })
 
           return

@@ -620,42 +620,8 @@ const formatImagesIntoBlocks = (images?: string[]): Anthropic.ImageBlockParam[] 
 
 const toolUseInstructionsReminderCN = `# 提醒：工具使用说明
 
-工具调用使用 XML 风格的标签格式。工具名称包含在开闭标签中，每个参数同样包含在各自的标签中。格式如下：
-
-<tool_name>
-<parameter1_name>value1</parameter1_name>
-<parameter2_name>value2</parameter2_name>
-...
-</tool_name>
-
-例如：
-
-<attempt_completion>
-<result>
-I have completed the task...
-</result>
-<depositExperience>false</depositExperience>
-</attempt_completion>
-
-请始终遵循此格式进行所有工具调用，以确保正确的解析和执行。`
+请使用应用提供的原生工具调用能力。不要在回复文本中手写 XML、JSON 或其他工具调用格式。`
 
 const toolUseInstructionsReminder = `# Reminder: Instructions for Tool Use
 
-Tool uses are formatted using XML-style tags. The tool name is enclosed in opening and closing tags, and each parameter is similarly enclosed within its own set of tags. Here's the structure:
-
-<tool_name>
-<parameter1_name>value1</parameter1_name>
-<parameter2_name>value2</parameter2_name>
-...
-</tool_name>
-
-For example:
-
-<attempt_completion>
-<result>
-I have completed the task...
-</result>
-<depositExperience>false</depositExperience>
-</attempt_completion>
-
-Always adhere to this format for all tool uses to ensure proper parsing and execution.`
+Use the application's native tool-calling capability. Do not write XML, JSON, or any other tool-call syntax in normal reply text.`

@@ -4,7 +4,6 @@
 // Copyright (c) 2025 cline Authors, All rights reserved.
 // Licensed under the Apache License, Version 2.0
 
-import { Anthropic } from '@anthropic-ai/sdk'
 import OpenAI, { AzureOpenAI } from 'openai'
 import { withRetry } from '../retry'
 import { ApiHandlerOptions, azureOpenAiDefaultApiVersion, ModelInfo, openAiModelInfoSaneDefaults } from '@shared/api'
@@ -12,6 +11,8 @@ import { ApiHandler } from '../index'
 import { convertToOpenAiMessages } from '../transform/openai-format'
 import { convertToResponsesInput } from '../transform/responses-format'
 import type { ApiStream } from '../transform/stream'
+import type { ApiCreateMessageRequest, NativeToolChoice, NativeToolDefinition } from '../tools'
+import { OpenAiToolCallStreamAccumulator } from '../tools'
 import { convertToR1Format } from '../transform/r1-format'
 import type { ChatCompletionReasoningEffort } from 'openai/resources/chat/completions'
 import { checkProxyConnectivity, createProxyAgent } from './proxy/index'
@@ -99,17 +100,18 @@ export class OpenAiHandler implements ApiHandler {
   }
 
   @withRetry()
-  async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  async *createMessage(request: ApiCreateMessageRequest): ApiStream {
     const useResponsesApi = this.options.openAiModelInfo?.apiFormat === 'responses'
 
     if (useResponsesApi) {
-      yield* this.createMessageViaResponses(systemPrompt, messages)
+      yield* this.createMessageViaResponses(request)
     } else {
-      yield* this.createMessageViaChatCompletions(systemPrompt, messages)
+      yield* this.createMessageViaChatCompletions(request)
     }
   }
 
-  private async *createMessageViaChatCompletions(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  private async *createMessageViaChatCompletions(request: ApiCreateMessageRequest): ApiStream {
+    const { systemPrompt, messages, tools } = request
     const modelId = this.options.openAiModelId ?? ''
     const isDeepseekReasoner = modelId.includes('deepseek-reasoner')
     const isR1FormatRequired = this.options.openAiModelInfo?.isR1FormatRequired ?? false
@@ -143,11 +145,18 @@ export class OpenAiHandler implements ApiHandler {
       ...(supportsTemperature && { temperature }),
       max_tokens: maxTokens,
       reasoning_effort: reasoningEffort,
+      ...(tools.length > 0 && {
+        tools: this.toOpenAiTools(tools),
+        tool_choice: this.toOpenAiToolChoice(request.toolChoice),
+        parallel_tool_calls: false
+      }),
       stream: true,
       stream_options: { include_usage: true }
     })
+    const toolCallAccumulator = new OpenAiToolCallStreamAccumulator()
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta
+      toolCallAccumulator.append(delta?.tool_calls)
       if (delta?.content) {
         yield {
           type: 'text',
@@ -170,9 +179,18 @@ export class OpenAiHandler implements ApiHandler {
         }
       }
     }
+
+    for (const toolCall of toolCallAccumulator.flush('openai')) {
+      if ('invalid' in toolCall) {
+        yield { type: 'invalid_tool_call', id: toolCall.id, name: toolCall.name, rawArguments: toolCall.rawArguments, error: toolCall.error }
+      } else {
+        yield { type: 'tool_call', toolCall }
+      }
+    }
   }
 
-  private async *createMessageViaResponses(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  private async *createMessageViaResponses(request: ApiCreateMessageRequest): ApiStream {
+    const { systemPrompt, messages, tools } = request
     const modelId = this.options.openAiModelId ?? ''
     const isReasoningModelFamily = modelId.includes('o1') || modelId.includes('o3') || modelId.includes('o4')
     const isGpt5OrAbove = modelId.startsWith('gpt-5') || modelId.startsWith('gpt-6')
@@ -192,12 +210,20 @@ export class OpenAiHandler implements ApiHandler {
     const stream = await this.client.responses.create({
       model: modelId,
       input: responseInput,
+      ...(tools.length > 0 && {
+        tools: this.toResponsesTools(tools),
+        tool_choice: this.toResponsesToolChoice(request.toolChoice),
+        parallel_tool_calls: false
+      }),
       ...(supportsTemperature && temperature !== undefined && { temperature }),
       ...(maxTokens !== undefined && { max_output_tokens: maxTokens }),
       stream: true
     })
 
+    const responseCallArgs = new Map<string, { id: string; name?: string; arguments: string }>()
+
     for await (const event of stream) {
+      const rawEvent = event as any
       if (event.type === 'response.output_text.delta') {
         yield { type: 'text', text: event.delta }
       }
@@ -215,7 +241,88 @@ export class OpenAiHandler implements ApiHandler {
           reasoningTokens: usage?.output_tokens_details?.reasoning_tokens || 0
         }
       }
+
+      if (rawEvent.type === 'response.output_item.added' && rawEvent.item?.type === 'function_call') {
+        const item = rawEvent.item
+        const id = item.call_id || item.id
+        responseCallArgs.set(id, { id, name: item.name, arguments: item.arguments || '' })
+      }
+
+      if (rawEvent.type === 'response.function_call_arguments.delta') {
+        const id = rawEvent.call_id || rawEvent.item_id || rawEvent.output_index?.toString()
+        const current: { id: string; name?: string; arguments: string } = responseCallArgs.get(id) ?? { id, arguments: '' }
+        current.arguments += rawEvent.delta || ''
+        responseCallArgs.set(id, current)
+      }
+
+      if (rawEvent.type === 'response.function_call_arguments.done') {
+        const id = rawEvent.call_id || rawEvent.item_id || rawEvent.output_index?.toString()
+        const current: { id: string; name?: string; arguments: string } = responseCallArgs.get(id) ?? { id, arguments: '' }
+        current.arguments = rawEvent.arguments ?? current.arguments
+        if (rawEvent.name) current.name = rawEvent.name
+        responseCallArgs.set(id, current)
+      }
+
+      if (rawEvent.type === 'response.output_item.done' && rawEvent.item?.type === 'function_call') {
+        const item = rawEvent.item
+        const id = item.call_id || item.id
+        responseCallArgs.set(id, {
+          id,
+          name: item.name,
+          arguments: item.arguments ?? responseCallArgs.get(id)?.arguments ?? ''
+        })
+      }
     }
+
+    const accumulator = new OpenAiToolCallStreamAccumulator()
+    let index = 0
+    for (const call of responseCallArgs.values()) {
+      accumulator.append([
+        {
+          index: index++,
+          id: call.id,
+          function: { name: call.name, arguments: call.arguments }
+        }
+      ])
+    }
+    for (const toolCall of accumulator.flush('openai_responses')) {
+      if ('invalid' in toolCall) {
+        yield { type: 'invalid_tool_call', id: toolCall.id, name: toolCall.name, rawArguments: toolCall.rawArguments, error: toolCall.error }
+      } else {
+        yield { type: 'tool_call', toolCall }
+      }
+    }
+  }
+
+  private toOpenAiTools(tools: NativeToolDefinition[]): OpenAI.Chat.ChatCompletionTool[] {
+    return tools.map(
+      (tool) =>
+        ({
+          type: 'function',
+          function: tool.function
+        }) as unknown as OpenAI.Chat.ChatCompletionTool
+    )
+  }
+
+  private toOpenAiToolChoice(toolChoice: NativeToolChoice): OpenAI.Chat.ChatCompletionToolChoiceOption | undefined {
+    if (toolChoice === 'none') return undefined
+    return toolChoice as OpenAI.Chat.ChatCompletionToolChoiceOption
+  }
+
+  private toResponsesTools(tools: NativeToolDefinition[]): any[] {
+    return tools.map((tool) => ({
+      type: 'function',
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: tool.function.parameters,
+      strict: tool.function.strict
+    }))
+  }
+
+  private toResponsesToolChoice(toolChoice: NativeToolChoice): any {
+    if (toolChoice === 'none') return undefined
+    if (typeof toolChoice === 'string') return toolChoice
+    return { type: 'function', name: toolChoice.function.name }
   }
 
   getModel(): { id: string; info: ModelInfo } {

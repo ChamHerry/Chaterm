@@ -2,6 +2,12 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { JumpServerUser } from './parser'
 const logger = createLogger('jumpserver')
 
+type JumpServerUserSelectionContext = {
+  targetAssetUuid?: string
+  preferredLoginUsername?: string
+  preferredLoginUserName?: string
+}
+
 /**
  * Handle JumpServer user selection with event sender
  * Used in contexts where we have an IPC event object
@@ -13,13 +19,17 @@ const logger = createLogger('jumpserver')
 export const handleJumpServerUserSelectionWithEvent = (
   event: Electron.IpcMainInvokeEvent,
   connectionId: string,
-  users: JumpServerUser[]
+  users: JumpServerUser[],
+  context: JumpServerUserSelectionContext = {}
 ): Promise<number> => {
   return new Promise<number>((resolve, reject) => {
     // Send user selection request to frontend
     event.sender.send('jumpserver:user-selection-request', {
       id: connectionId,
-      users
+      users,
+      targetAssetUuid: context.targetAssetUuid,
+      preferredLoginUsername: context.preferredLoginUsername,
+      preferredLoginUserName: context.preferredLoginUserName
     })
 
     // Set timeout (30 seconds)
@@ -52,14 +62,21 @@ export const handleJumpServerUserSelectionWithEvent = (
  * @param users - List of available users
  * @returns Promise that resolves with selected user ID
  */
-export const handleJumpServerUserSelectionWithWindow = (connectionId: string, users: JumpServerUser[]): Promise<number> => {
+export const handleJumpServerUserSelectionWithWindow = (
+  connectionId: string,
+  users: JumpServerUser[],
+  context: JumpServerUserSelectionContext = {}
+): Promise<number> => {
   return new Promise<number>((resolve, reject) => {
     // Send user selection request to frontend
     const mainWindow = BrowserWindow.getAllWindows()[0]
     if (mainWindow) {
       mainWindow.webContents.send('jumpserver:user-selection-request', {
         id: connectionId,
-        users
+        users,
+        targetAssetUuid: context.targetAssetUuid,
+        preferredLoginUsername: context.preferredLoginUsername,
+        preferredLoginUserName: context.preferredLoginUserName
       })
     }
 

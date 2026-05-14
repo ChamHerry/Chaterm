@@ -442,8 +442,22 @@ interface ApiType {
   updateOrganizationAssetComment: (data: { organizationUuid: string; host: string; comment: string }) => Promise<any>
   // Organization asset management API
   getOrganizationAssets: (data: { organizationUuid: string; search?: string; page?: number; pageSize?: number }) => Promise<any>
-  createOrganizationAsset: (data: { organizationUuid: string; hostname: string; host: string; comment?: string }) => Promise<any>
-  updateOrganizationAsset: (data: { uuid: string; hostname?: string; host?: string; comment?: string }) => Promise<any>
+  createOrganizationAsset: (data: {
+    organizationUuid: string
+    hostname: string
+    host: string
+    comment?: string
+    loginUsername?: string | null
+    loginUserName?: string | null
+  }) => Promise<any>
+  updateOrganizationAsset: (data: {
+    uuid: string
+    hostname?: string
+    host?: string
+    comment?: string
+    loginUsername?: string | null
+    loginUserName?: string | null
+  }) => Promise<any>
   deleteOrganizationAsset: (data: { uuid: string }) => Promise<any>
   batchDeleteOrganizationAssets: (data: { uuids: string[] }) => Promise<any>
   // Custom folder management API

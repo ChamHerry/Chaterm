@@ -290,50 +290,50 @@ describe('Task tool result helpers', () => {
     expect(task.pushToolResult).toHaveBeenCalledTimes(1)
   })
 
-  it('normalizeToolResultsForApi should flatten structured tool_result block', () => {
-    const normalized = task.normalizeToolResultsForApi([
+  it('flushPendingToolResults should preserve native tool_result blocks without text flattening', async () => {
+    task.pendingToolResults = [
       {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            content: JSON.stringify({
-              toolDescription: '[grep_search]',
-              toolName: 'grep_search',
-              ip: '10.0.0.8',
-              size: 222,
-              lineCount: 3,
-              isError: false,
-              result: 'match lines'
-            })
-          }
-        ]
+        toolName: 'list_tables',
+        toolDescription: '[list_tables]',
+        taskId: task.taskId,
+        toolUseId: 'call_list_tables_1',
+        timestamp: Date.now(),
+        result: 'tables'
       }
-    ])
+    ]
+    task.addToApiConversationHistory = vi.fn().mockResolvedValue(undefined)
 
-    const text = (normalized[0].content[0] as any).text
-    expect((normalized[0].content[0] as any).type).toBe('text')
-    expect(text).toContain('Tool [grep_search]')
-    expect(text).toContain('on 10.0.0.8')
-    expect(text).toContain('completed successfully')
-    expect(text).toContain('result: match lines')
+    await task.flushPendingToolResults()
+
+    expect(task.addToApiConversationHistory).toHaveBeenCalledWith({
+      role: 'user',
+      content: [
+        expect.objectContaining({
+          type: 'tool_result',
+          tool_use_id: 'call_list_tables_1',
+          content: expect.stringContaining('tables')
+        })
+      ]
+    })
+    expect(task.pendingToolResults).toHaveLength(0)
   })
 
-  it('normalizeToolResultsForApi should return empty text when tool_result is invalid json', () => {
-    const normalized = task.normalizeToolResultsForApi([
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            content: 'not-json'
-          }
-        ]
-      }
-    ])
+  it('createToolUseFromNativeCall should map native tool calls to existing dispatch params', () => {
+    const block = task.createToolUseFromNativeCall({
+      id: 'call_list_tables_1',
+      name: 'list_tables',
+      input: { database: 'app_prod', schema: 'public' },
+      provider: 'openai'
+    })
 
-    expect((normalized[0].content[0] as any).type).toBe('text')
-    expect((normalized[0].content[0] as any).text).toBe('')
+    expect(block).toEqual({
+      type: 'tool_use',
+      id: 'call_list_tables_1',
+      name: 'list_tables',
+      input: { database: 'app_prod', schema: 'public' },
+      params: { database: 'app_prod', schema: 'public' },
+      partial: false
+    })
   })
 
   it('getToolDescription should format known and unknown tool names', () => {
@@ -349,9 +349,9 @@ describe('Task tool result helpers', () => {
     expect(task.isLocalHost('10.0.0.1')).toBe(false)
   })
 
-  it('removeClosingTag should strip trailing partial XML-like marker', () => {
+  it('removeClosingTag should keep native tool parameter text unchanged', () => {
     const output = task.removeClosingTag(true, 'command', 'ls -al </com')
-    expect(output).toBe('ls -al')
+    expect(output).toBe('ls -al </com')
   })
 
   it('removeClosingTag should return original text when not partial', () => {

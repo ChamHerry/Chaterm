@@ -10,6 +10,7 @@
 
 import type { Anthropic } from '@anthropic-ai/sdk'
 import type { ApiHandler } from '@api/index'
+import { createTextOnlyRequest } from '@api/tools'
 import type { ApiStreamChunk, ApiStreamUsageChunk } from '@api/transform/stream'
 import type { DbAiAction } from '@common/db-ai-types'
 import type { DbAiEventSink } from './types'
@@ -49,7 +50,7 @@ export async function runDbAiStream(input: StreamRunnerInput): Promise<StreamRun
   let text = ''
   let reasoning = ''
   let usage: ApiStreamUsageChunk | undefined
-  const apiStream = handler.createMessage(systemPrompt, messages)
+  const apiStream = handler.createMessage(createTextOnlyRequest(systemPrompt, messages))
   try {
     for await (const rawChunk of apiStream as AsyncGenerator<ApiStreamChunk>) {
       if (isCancelled()) break

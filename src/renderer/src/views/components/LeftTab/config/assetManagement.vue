@@ -137,6 +137,8 @@ interface AssetItem {
   hostname: string
   host: string
   comment?: string
+  login_username?: string | null
+  login_user_name?: string | null
   data_source: string
 }
 
@@ -144,6 +146,8 @@ interface AssetEditPayload {
   hostname: string
   host: string
   comment: string
+  loginUsername?: string | null
+  loginUserName?: string | null
   uuid?: string
 }
 
@@ -213,6 +217,13 @@ const columns = computed(() => [
     dataIndex: 'host',
     key: 'host',
     width: 150
+  },
+  {
+    title: t('personal.loginUsername'),
+    dataIndex: 'login_username',
+    key: 'login_username',
+    width: 130,
+    ellipsis: true
   },
   {
     title: t('personal.dataSource'),
@@ -321,7 +332,9 @@ const handleEdit = (record: AssetItem) => {
     uuid: record.uuid,
     hostname: record.hostname,
     host: record.host,
-    comment: record.comment || ''
+    comment: record.comment || '',
+    loginUsername: record.login_username || '',
+    loginUserName: record.login_user_name || ''
   }
   editFormVisible.value = true
 }
@@ -333,13 +346,17 @@ const handleSaveAsset = async (data: AssetEditPayload) => {
       result = isCommentOnlyEdit.value
         ? await window.api.updateOrganizationAsset({
             uuid: data.uuid,
-            comment: data.comment
+            comment: data.comment,
+            loginUsername: data.loginUsername,
+            loginUserName: data.loginUserName
           })
         : await window.api.updateOrganizationAsset({
             uuid: data.uuid,
             hostname: data.hostname,
             host: data.host,
-            comment: data.comment
+            comment: data.comment,
+            loginUsername: data.loginUsername,
+            loginUserName: data.loginUserName
           })
       handleMutationResult(result, t('personal.updateAssetSuccess'))
     } else {
@@ -347,7 +364,9 @@ const handleSaveAsset = async (data: AssetEditPayload) => {
         organizationUuid: props.organizationUuid,
         hostname: data.hostname,
         host: data.host,
-        comment: data.comment
+        comment: data.comment,
+        loginUsername: data.loginUsername,
+        loginUserName: data.loginUserName
       })
       handleMutationResult(result, t('personal.addAssetSuccess'))
     }

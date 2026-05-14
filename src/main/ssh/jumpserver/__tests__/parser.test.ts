@@ -5,13 +5,13 @@ describe('JumpServer Parser', () => {
   describe('parseJumpserverOutput', () => {
     describe('parse Chinese format', () => {
       const chineseOutput = `
-  ID | 名称                             | 地址        | 平台           | 组织            | 备注                          
+  ID | 名称                             | 地址        | 平台           | 组织            | 备注
 -----+----------------------------------+-------------+----------------+-----------------+-------------------------------
-  1  | demo-app-01                      | 192.0.2.10   | Linux          | ExampleOrg      | 示例资产A                     
-  2  | demo-db-01                       | 198.51.100.20| Linux          | ExampleOrg      | 数据库节点                    
-  3  | demo-cache-01                    | 203.0.113.30 | Linux          | ExampleOrg      |                               
-  4  | qa-proxy-01                      | 192.0.2.40   | Linux          | ExampleOrg      | 代理                          
-  5  | ops-bastion-01                   | 198.51.100.50| Linux          | ExampleOrg      | 跳板                          
+  1  | demo-app-01                      | 192.0.2.10   | Linux          | ExampleOrg      | 示例资产A
+  2  | demo-db-01                       | 198.51.100.20| Linux          | ExampleOrg      | 数据库节点
+  3  | demo-cache-01                    | 203.0.113.30 | Linux          | ExampleOrg      |
+  4  | qa-proxy-01                      | 192.0.2.40   | Linux          | ExampleOrg      | 代理
+  5  | ops-bastion-01                   | 198.51.100.50| Linux          | ExampleOrg      | 跳板
 页码：1，每页行数：15，总页数：6，总数量：88
 提示：输入资产ID直接登录，二级搜索使用 // + 字段，如：//192 上一页：b 下一页：n
 搜索：
@@ -51,17 +51,17 @@ describe('JumpServer Parser', () => {
 
     describe('parse English format', () => {
       const englishOutput = `
-  ID | NAME                             | ADDRESS     | PLATFORM       | ORGANIZATION       | COMMENT                    
+  ID | NAME                             | ADDRESS     | PLATFORM       | ORGANIZATION       | COMMENT
 -----+----------------------------------+-------------+----------------+--------------------+----------------------------
-  1  | demo-app-01                      | 192.0.2.10   | Linux          | ExampleOrg      | sample asset A                
-  2  | demo-db-01                       | 198.51.100.20| Linux          | ExampleOrg      | database node                 
-  3  | demo-cache-01                    | 203.0.113.30 | Linux          | ExampleOrg      | cache layer                   
-  4  | qa-proxy-01                      | 192.0.2.40   | Linux          | ExampleOrg      | proxy                         
-  5  | ops-bastion-01                   | 198.51.100.50| Linux          | ExampleOrg      | bastion host                  
-  6  | staging-worker-02                | 203.0.113.60 | Linux          | ExampleOrg      | autoscale node                
+  1  | demo-app-01                      | 192.0.2.10   | Linux          | ExampleOrg      | sample asset A
+  2  | demo-db-01                       | 198.51.100.20| Linux          | ExampleOrg      | database node
+  3  | demo-cache-01                    | 203.0.113.30 | Linux          | ExampleOrg      | cache layer
+  4  | qa-proxy-01                      | 192.0.2.40   | Linux          | ExampleOrg      | proxy
+  5  | ops-bastion-01                   | 198.51.100.50| Linux          | ExampleOrg      | bastion host
+  6  | staging-worker-02                | 203.0.113.60 | Linux          | ExampleOrg      | autoscale node
 Page: 1, Count: 15, Total Page: 6, Total Count: 88
 Enter ID number directly login, multiple search use // + field, such as: //16 Page up: b        Page down: n
-Search: 
+Search:
 `
 
       it('should parse asset list with English headers', () => {
@@ -141,11 +141,11 @@ Search:
 
       it('should parse current JumpServer host/IP/comment table', () => {
         const output = `
-ID    | 主机名                                                                    | IP                             | 备注                   
+ID    | 主机名                                                                    | IP                             | 备注
 --------+---------------------------------------------------------------------------+--------------------------------+------------------------
-  1     | 10.200.2.201-aipaas                                                       | 10.200.2.201                   |                        
-  2     | 10.208.10.3                                                               | 10.208.10.3                    |                        
-  46    | 翠湖dw-10.88.215.201                                                      | 10.88.215.201                  |                        
+  1     | 10.200.2.201-aipaas                                                       | 10.200.2.201                   |
+  2     | 10.208.10.3                                                               | 10.208.10.3                    |
+  46    | 翠湖dw-10.88.215.201                                                      | 10.88.215.201                  |
 页码：1，每页行数：46，总页数：2，总数量：53
 提示：输入资产ID直接登录，二级搜索使用 // + 字段，如：//192 上一页：b 下一页：n
 搜索：
@@ -227,14 +227,14 @@ Another line without table format
 
   describe('parseJumpServerUsers', () => {
     const userSelectionOutput = `
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 -----+---------------+--------------
-  1  | admin         | admin        
-  2  | developer     | dev_user     
-  3  | operator      | ops_user     
+  1  | admin         | admin
+  2  | developer     | dev_user
+  3  | operator      | ops_user
 Tips: Input account ID to confirm
 Back: b
-ID> 
+ID>
 `
 
     it('should correctly parse user list', () => {
@@ -260,11 +260,11 @@ ID>
 
     it('should stop parsing when encountering Tips', () => {
       const outputWithTips = `
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 -----+---------------+--------------
-  1  | admin         | admin        
+  1  | admin         | admin
 Tips: Some tips here
-  2  | should_not_appear | hidden   
+  2  | should_not_appear | hidden
 `
       const users = parseJumpServerUsers(outputWithTips)
 
@@ -274,11 +274,11 @@ Tips: Some tips here
 
     it('should stop parsing when encountering Back prompt', () => {
       const outputWithBack = `
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 -----+---------------+--------------
-  1  | admin         | admin        
+  1  | admin         | admin
 Back: b
-  2  | should_not_appear | hidden   
+  2  | should_not_appear | hidden
 `
       const users = parseJumpServerUsers(outputWithBack)
 
@@ -287,11 +287,11 @@ Back: b
 
     it('should stop parsing when encountering ID prompt', () => {
       const outputWithIdPrompt = `
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 -----+---------------+--------------
-  1  | admin         | admin        
-ID> 
-  2  | should_not_appear | hidden   
+  1  | admin         | admin
+ID>
+  2  | should_not_appear | hidden
 `
       const users = parseJumpServerUsers(outputWithIdPrompt)
 
@@ -313,14 +313,55 @@ ID>
 
     it('should skip separator lines', () => {
       const outputWithSeparator = `
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 ---+---+---
-  1  | admin         | admin        
+  1  | admin         | admin
 `
       const users = parseJumpServerUsers(outputWithSeparator)
 
       expect(users).toHaveLength(1)
       expect(users[0].name).toBe('admin')
+    })
+
+    it('should parse Chinese user selection table from current JumpServer output', () => {
+      const chineseUserSelectionOutput = `
+  ID    | 主机名                                                 | IP                            | 备注
+--------+--------------------------------------------------------+-------------------------------+----------------------
+  1     | TEST-192.0.2.14-IAAS云管理平台                         | 192.0.2.14                    |
+页码：1，每页行数：22，总页数：1，总数量：1
+提示：输入资产ID直接登录，二级搜索使用 // + 字段，如：//192 上一页：b 下一页：n
+搜索：192.0.2.14
+[Host]> 1
+  ID    | 名称                                                                  | 用户名
+--------+-----------------------------------------------------------------------+---------------------------------------
+  1     | CSD-192.0.2.217_pgsql                                                 | pgsql
+  2     | CSD-192.0.2.35_cloud用户                                              | cloud
+  3     | CSD-192.0.2.44_cloud用户                                              | cloud
+  4     | CSD-192.0.2.170_csdcloud用户                                          | csdcloud
+  5     | CSD-192.0.2.11_root用户                                               | root
+  6     | CSD-192.0.2.12_root用户                                               | root
+  7     | CSD-192.0.2.15_root用户                                               | root
+  8     | CSD-192.0.2.100_root用户                                              | root
+  9     | ISOS-192.0.2.11-root用户                                              | root
+  10    | ISOS-IaaS云管理平台_cloud用户_cuihu                                   | cloud
+提示：输入系统用户ID直接登录
+返回：B/b
+ID>
+`
+
+      const users = parseJumpServerUsers(chineseUserSelectionOutput)
+
+      expect(users).toHaveLength(10)
+      expect(users[0]).toEqual({
+        id: 1,
+        name: 'CSD-192.0.2.217_pgsql',
+        username: 'pgsql'
+      })
+      expect(users[9]).toEqual({
+        id: 10,
+        name: 'ISOS-IaaS云管理平台_cloud用户_cuihu',
+        username: 'cloud'
+      })
     })
   })
 
@@ -328,9 +369,9 @@ ID>
     it('should detect output containing user selection prompt', () => {
       const promptOutput = `
 Please select account ID to connect:
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 -----+---------------+--------------
-  1  | admin         | admin        
+  1  | admin         | admin
 `
       expect(hasUserSelectionPrompt(promptOutput)).toBe(true)
     })
@@ -338,19 +379,19 @@ Please select account ID to connect:
     it('should detect full user selection prompt', () => {
       const fullPromptOutput = `
 Select account ID to login:
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 -----+---------------+--------------
-  1  | admin         | admin        
-  2  | developer     | dev_user     
+  1  | admin         | admin
+  2  | developer     | dev_user
 `
       expect(hasUserSelectionPrompt(fullPromptOutput)).toBe(true)
     })
 
     it('should return false when account ID is missing', () => {
       const noAccountIdOutput = `
-  ID | NAME          | USERNAME     
+  ID | NAME          | USERNAME
 -----+---------------+--------------
-  1  | admin         | admin        
+  1  | admin         | admin
 `
       expect(hasUserSelectionPrompt(noAccountIdOutput)).toBe(false)
     })
@@ -372,6 +413,31 @@ Some other content
       expect(hasUserSelectionPrompt('account ID')).toBe(false)
       // only ID and NAME without account ID
       expect(hasUserSelectionPrompt('ID | NAME')).toBe(false)
+    })
+
+    it('should detect Chinese system user selection prompt', () => {
+      const promptOutput = `
+  ID    | 名称                                                                  | 用户名
+--------+-----------------------------------------------------------------------+---------------------------------------
+  1     | CSD-192.0.2.217_pgsql                                                 | pgsql
+提示：输入系统用户ID直接登录
+返回：B/b
+ID>
+`
+
+      expect(hasUserSelectionPrompt(promptOutput)).toBe(true)
+    })
+
+    it('should not detect Chinese asset selection prompt as user selection', () => {
+      const assetPromptOutput = `
+  ID    | 主机名                                                 | IP                            | 备注
+--------+--------------------------------------------------------+-------------------------------+----------------------
+  1     | TEST-192.0.2.14-IAAS云管理平台                         | 192.0.2.14                    |
+提示：输入资产ID直接登录，二级搜索使用 // + 字段，如：//192 上一页：b 下一页：n
+搜索：
+`
+
+      expect(hasUserSelectionPrompt(assetPromptOutput)).toBe(false)
     })
   })
 })

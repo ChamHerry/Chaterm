@@ -41,6 +41,27 @@
         </a-form-item>
 
         <a-form-item
+          :label="t('personal.loginUsername')"
+          name="loginUsername"
+        >
+          <a-input
+            v-model:value="formState.loginUsername"
+            :placeholder="t('personal.loginUsernamePlaceholder')"
+            allow-clear
+          />
+        </a-form-item>
+
+        <a-form-item
+          :label="t('personal.loginUserName')"
+          name="loginUserName"
+        >
+          <a-input
+            v-model:value="formState.loginUserName"
+            allow-clear
+          />
+        </a-form-item>
+
+        <a-form-item
           :label="t('personal.comment')"
           name="comment"
         >
@@ -82,6 +103,8 @@ interface Props {
     hostname?: string
     host?: string
     comment?: string
+    loginUsername?: string | null
+    loginUserName?: string | null
   } | null
 }
 
@@ -89,7 +112,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   cancel: []
-  save: [data: { hostname: string; host: string; comment: string; uuid?: string }]
+  save: [data: { hostname: string; host: string; comment: string; loginUsername?: string | null; loginUserName?: string | null; uuid?: string }]
 }>()
 
 const formRef = ref<FormInstance>()
@@ -97,6 +120,8 @@ const formRef = ref<FormInstance>()
 const formState = reactive({
   hostname: '',
   host: '',
+  loginUsername: '',
+  loginUserName: '',
   comment: ''
 })
 
@@ -121,11 +146,15 @@ const syncFormFromProps = () => {
   if (props.isEdit && props.editData) {
     formState.hostname = props.editData.hostname || ''
     formState.host = props.editData.host || ''
+    formState.loginUsername = props.editData.loginUsername || ''
+    formState.loginUserName = props.editData.loginUserName || ''
     formState.comment = props.editData.comment || ''
     return
   }
   formState.hostname = ''
   formState.host = ''
+  formState.loginUsername = ''
+  formState.loginUserName = ''
   formState.comment = ''
 }
 
@@ -143,6 +172,8 @@ const handleSave = async () => {
     emit('save', {
       hostname: formState.hostname.trim(),
       host: formState.host.trim(),
+      loginUsername: formState.loginUsername.trim() || null,
+      loginUserName: formState.loginUserName.trim() || null,
       comment: formState.comment.trim(),
       uuid: props.editData?.uuid
     })

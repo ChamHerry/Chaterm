@@ -771,7 +771,14 @@ const getOrganizationAssets = async (data: { organizationUuid: string; search?: 
   }
 }
 
-const createOrganizationAsset = async (data: { organizationUuid: string; hostname: string; host: string; comment?: string }) => {
+const createOrganizationAsset = async (data: {
+  organizationUuid: string
+  hostname: string
+  host: string
+  comment?: string
+  loginUsername?: string | null
+  loginUserName?: string | null
+}) => {
   try {
     const result = await ipcRenderer.invoke('create-organization-asset', data)
     return result
@@ -780,7 +787,14 @@ const createOrganizationAsset = async (data: { organizationUuid: string; hostnam
   }
 }
 
-const updateOrganizationAsset = async (data: { uuid: string; hostname?: string; host?: string; comment?: string }) => {
+const updateOrganizationAsset = async (data: {
+  uuid: string
+  hostname?: string
+  host?: string
+  comment?: string
+  loginUsername?: string | null
+  loginUserName?: string | null
+}) => {
   try {
     const result = await ipcRenderer.invoke('update-organization-asset', data)
     return result

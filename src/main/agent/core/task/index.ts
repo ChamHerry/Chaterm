@@ -16,7 +16,15 @@ import { mark } from '@perf'
 import pWaitFor from 'p-wait-for'
 import { serializeError } from 'serialize-error'
 import { ApiHandler, buildApiHandler } from '@api/index'
-import { ApiStream, ApiStreamUsageChunk, ApiStreamReasoningChunk, ApiStreamTextChunk } from '@api/transform/stream'
+import {
+  ApiStream,
+  ApiStreamUsageChunk,
+  ApiStreamReasoningChunk,
+  ApiStreamTextChunk,
+  ApiStreamToolCallChunk,
+  ApiStreamInvalidToolCallChunk
+} from '@api/transform/stream'
+import { createTextOnlyRequest, type NativeToolCall } from '@api/tools'
 import { formatContentBlockToMarkdown } from '@integrations/misc/export-markdown'
 import { showSystemNotification } from '@integrations/notifications'
 import { ApiConfiguration, ApiProvider } from '@shared/api'
@@ -66,8 +74,15 @@ interface MessageUpdater {
   updateApiReqMsg: (cancelReason?: ChatermApiReqCancelReason, streamingFailedMessage?: string) => void
 }
 
-import { AssistantMessageContent, parseAssistantMessageV2, ToolParamName, ToolUseName, TextContent, ToolUse } from '@core/assistant-message'
-import { isToolAllowed, type TaskWorkspace } from './tool-registry'
+import { AssistantMessageContent, ToolParamName, ToolUseName, TextContent, ToolUse } from '@core/assistant-message'
+import {
+  getNativeToolDefinitions,
+  isRegisteredToolName,
+  isToolAllowed,
+  normalizeNativeToolInput,
+  validateNativeToolInput,
+  type TaskWorkspace
+} from './tool-registry'
 import { DEFAULT_WORKSPACE, hasValidDbContext, normaliseWorkspace, type DbTaskContext } from './workspace'
 import {
   runCountRows,
@@ -344,6 +359,7 @@ export class Task {
   // These are flushed into apiConversationHistory as dedicated tool_result
   // messages before the next API request is prepared.
   private pendingToolResults: ToolResult[] = []
+  private activeToolUseId?: string
   private didRejectTool = false
   private didAlreadyUseTool = false
   private didCompleteReadingStream = false
@@ -694,7 +710,7 @@ export class Task {
         })
       }
       const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userPrompt }]
-      const stream = this.api.createMessage(systemPrompt, messages)
+      const stream = this.api.createMessage(createTextOnlyRequest(systemPrompt, messages, this.taskId))
       let responseText = ''
       for await (const chunk of stream) {
         if (chunk.type === 'text') {
@@ -719,7 +735,7 @@ export class Task {
 
   private createSingleTurnLlmCaller(): (systemPrompt: string, userPrompt: string) => Promise<string> {
     return async (systemPrompt: string, userPrompt: string): Promise<string> => {
-      const stream = this.api.createMessage(systemPrompt, [{ role: 'user', content: userPrompt }])
+      const stream = this.api.createMessage(createTextOnlyRequest(systemPrompt, [{ role: 'user', content: userPrompt }], this.taskId))
       let responseText = ''
       for await (const chunk of stream) {
         if (chunk.type === 'text') {
@@ -791,10 +807,7 @@ export class Task {
 
       const toolResultBlock: Anthropic.ToolResultBlockParam = {
         type: 'tool_result',
-        tool_use_id: `${result.taskId}`,
-        // Directly store the structured ToolResult payload in content.
-        // Downstream provider adapters will see only text because
-        // normalizeToolResultsForApi() flattens these blocks before sending.
+        tool_use_id: result.toolUseId ?? `${result.taskId}`,
         content: JSON.stringify(result),
         is_error: isError
       }
@@ -825,73 +838,6 @@ export class Task {
     }
 
     return value
-  }
-
-  private normalizeToolResultsForApi(conversationHistory: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
-    return conversationHistory.map((message) => {
-      if (!Array.isArray(message.content)) {
-        return message
-      }
-
-      const transformedContent = message.content.map((block) => {
-        // New V2: tool_result blocks contain structured ToolResult payloads.
-        // Before sending to the provider, we flatten these into plain text so
-        // that downstream adapters only see supported block types.
-        if (block.type === 'tool_result') {
-          const lines: string[] = []
-
-          const addFromToolResult = (tr: ToolResult) => {
-            const segments: string[] = []
-            const header = tr.toolDescription || tr.toolName
-
-            if (header) {
-              segments.push(`Tool ${header}`)
-            }
-            if (tr.ip) {
-              segments.push(`on ${tr.ip}`)
-            }
-            if (typeof tr.size === 'number') {
-              segments.push(`(~${tr.size} bytes)`)
-            }
-            if (typeof tr.lineCount === 'number') {
-              segments.push(`(~${tr.lineCount} lines)`)
-            }
-            if (typeof tr.isError === 'boolean') {
-              segments.push(tr.isError ? 'ended with error' : 'completed successfully')
-            }
-            if (typeof tr.errorMessage === 'string' && tr.errorMessage.length > 0) {
-              segments.push(`error: ${tr.errorMessage}`)
-            }
-            if (typeof tr.result === 'string' && tr.result.length > 0) {
-              segments.push(`result: ${tr.result}`)
-            }
-
-            if (segments.length > 0) {
-              lines.push(segments.join(', '))
-            }
-          }
-
-          if (typeof block.content === 'string') {
-            const toolResult = this.parseToolResultContent(block.content)
-            if (toolResult) {
-              addFromToolResult(toolResult)
-            }
-          }
-
-          return {
-            type: 'text',
-            text: lines.join('\n')
-          } as Anthropic.TextBlockParam
-        }
-
-        return block
-      })
-
-      return {
-        ...message,
-        content: transformedContent
-      }
-    })
   }
 
   /**
@@ -2292,12 +2238,17 @@ export class Task {
       this.summarizeUpToTs = undefined
     }
 
-    // Normalize tool_result and legacy file_ref blocks into text-only content
-    // so that downstream provider adapters see only supported block types.
-    conversationHistory = this.normalizeToolResultsForApi(conversationHistory)
-
     mark('chaterm/agent/willCallAPI')
-    let stream = this.api.createMessage(systemPrompt, conversationHistory)
+    const chatSettings = await getGlobalState('chatSettings')
+    const tools = chatSettings?.mode === 'chat' ? [] : getNativeToolDefinitions(this.workspace ?? DEFAULT_WORKSPACE)
+    let stream = this.api.createMessage({
+      systemPrompt,
+      messages: conversationHistory,
+      tools,
+      toolChoice: tools.length > 0 ? 'auto' : 'none',
+      workspace: this.workspace ?? DEFAULT_WORKSPACE,
+      taskId: this.taskId
+    })
 
     const iterator = stream[Symbol.asyncIterator]()
 
@@ -2690,6 +2641,12 @@ export class Task {
           case 'text':
             assistantMessage = await this.handleTextChunk(chunk, assistantMessage, reasoningMessage)
             break
+          case 'tool_call':
+            await this.handleToolCallChunk(chunk)
+            break
+          case 'invalid_tool_call':
+            await this.handleInvalidToolCallChunk(chunk)
+            break
         }
 
         if (await this.shouldInterruptStream(assistantMessage, abortStream)) {
@@ -2730,16 +2687,94 @@ export class Task {
     }
 
     assistantMessage += chunk.text
-    const prevLength = this.assistantMessageContent.length
-
-    this.assistantMessageContent = parseAssistantMessageV2(assistantMessage)
-
-    if (this.assistantMessageContent.length > prevLength) {
-      this.userMessageContentReady = false
-    }
+    this.appendAssistantTextChunk(chunk.text)
 
     this.presentAssistantMessage()
     return assistantMessage
+  }
+
+  private appendAssistantTextChunk(text: string): void {
+    if (text.length === 0) return
+    const last = this.assistantMessageContent.at(-1)
+    if (last?.type === 'text' && last.partial) {
+      last.content += text
+    } else {
+      this.assistantMessageContent.push({
+        type: 'text',
+        content: text,
+        partial: true
+      })
+      this.userMessageContentReady = false
+    }
+  }
+
+  private async handleToolCallChunk(chunk: ApiStreamToolCallChunk): Promise<void> {
+    const toolUse = this.createToolUseFromNativeCall(chunk.toolCall)
+    if (!toolUse) return
+    this.assistantMessageContent.push(toolUse)
+    this.userMessageContentReady = false
+    this.presentAssistantMessage()
+  }
+
+  private async handleInvalidToolCallChunk(chunk: ApiStreamInvalidToolCallChunk): Promise<void> {
+    const label = chunk.name ? ` '${chunk.name}'` : ''
+    const message = `Invalid native tool call${label}: ${chunk.error}`
+    logger.warn('Invalid native tool call', {
+      event: 'tool.native.invalid',
+      taskId: this.taskId,
+      toolName: chunk.name,
+      hasRawArguments: !!chunk.rawArguments
+    })
+    this.userMessageContent.push({
+      type: 'text',
+      text: this.responseFormatter.toolError(message)
+    })
+    this.assistantMessageContent.push({
+      type: 'text',
+      content: message,
+      partial: false
+    })
+    this.userMessageContentReady = true
+  }
+
+  private createToolUseFromNativeCall(toolCall: NativeToolCall): ToolUse | null {
+    if (!isRegisteredToolName(toolCall.name)) {
+      this.userMessageContent.push({
+        type: 'text',
+        text: this.responseFormatter.toolError(`Tool '${toolCall.name}' is not registered.`)
+      })
+      this.assistantMessageContent.push({
+        type: 'text',
+        content: `Unregistered native tool call '${toolCall.name}'.`,
+        partial: false
+      })
+      this.userMessageContentReady = true
+      return null
+    }
+
+    const validation = validateNativeToolInput(toolCall.name, toolCall.input)
+    if (!validation.ok) {
+      this.userMessageContent.push({
+        type: 'text',
+        text: this.responseFormatter.toolError(validation.error)
+      })
+      this.assistantMessageContent.push({
+        type: 'text',
+        content: validation.error,
+        partial: false
+      })
+      this.userMessageContentReady = true
+      return null
+    }
+
+    return {
+      type: 'tool_use',
+      id: toolCall.id,
+      name: toolCall.name,
+      input: toolCall.input,
+      params: normalizeNativeToolInput(toolCall.name, toolCall.input),
+      partial: false
+    }
   }
 
   private async shouldInterruptStream(
@@ -2853,19 +2888,45 @@ export class Task {
   }
 
   private async processAssistantResponse(assistantMessage: string): Promise<boolean> {
-    if (assistantMessage.length === 0) {
+    const assistantContent = this.buildAssistantApiContent(assistantMessage)
+    if (assistantContent.length === 0) {
       return await this.handleEmptyAssistantResponse()
     }
     // telemetryService.captureConversationTurnEvent(this.taskId, await getGlobalState('apiProvider'), this.api.getModel().id, 'assistant')
 
     await this.addToApiConversationHistory({
       role: 'assistant',
-      content: [{ type: 'text', text: assistantMessage }]
+      content: assistantContent
     })
 
     await pWaitFor(() => this.userMessageContentReady)
 
     return await this.recursivelyMakeChatermRequests(this.userMessageContent)
+  }
+
+  private buildAssistantApiContent(assistantMessage: string): Anthropic.ContentBlockParam[] {
+    const content: Anthropic.ContentBlockParam[] = []
+
+    for (const block of this.assistantMessageContent) {
+      if (block.type === 'text') {
+        if (block.content.length > 0) {
+          content.push({ type: 'text', text: block.content })
+        }
+      } else if (block.type === 'tool_use' && block.id) {
+        content.push({
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input: block.input ?? block.params
+        } as Anthropic.ToolUseBlockParam)
+      }
+    }
+
+    if (content.length === 0 && assistantMessage.length > 0) {
+      content.push({ type: 'text', text: assistantMessage })
+    }
+
+    return content
   }
 
   private async handleEmptyAssistantResponse(): Promise<boolean> {
@@ -3241,6 +3302,7 @@ export class Task {
       isError?: boolean
       ephemeral?: boolean
       skipOffload?: boolean
+      toolUseId?: string
     }
   ): Promise<void> {
     let docPath: string | undefined
@@ -3280,6 +3342,7 @@ export class Task {
       toolName: options?.toolName ?? toolDescription,
       toolDescription,
       taskId: this.taskId,
+      toolUseId: options?.toolUseId ?? this.activeToolUseId,
       timestamp: Date.now(),
       ip: options?.ip,
       hosts: options?.hosts,
@@ -3385,17 +3448,8 @@ export class Task {
     }
   }
 
-  private removeClosingTag(isPartial: boolean, tag: ToolParamName, text?: string): string {
-    if (!isPartial) return text || ''
-    if (!text) return ''
-    const tagRegex = new RegExp(
-      `\\s?<\\/?${tag
-        .split('')
-        .map((c) => `(?:${c})?`)
-        .join('')}$`,
-      'g'
-    )
-    return text.replace(tagRegex, '')
+  private removeClosingTag(_isPartial: boolean, _tag: ToolParamName, text?: string): string {
+    return text || ''
   }
 
   private async handleToolError(toolDescription: string, action: string, error: Error): Promise<void> {
@@ -3794,147 +3848,153 @@ export class Task {
       return
     }
 
-    switch (block.name) {
-      case 'execute_command':
-        await this.handleExecuteCommandToolUse(block)
-        break
-      case 'ask_followup_question':
-        await this.handleAskFollowupQuestionToolUse(block)
-        break
-      case 'condense':
-        await this.handleCondenseToolUse(block)
-        break
-      case 'report_bug':
-        await this.handleReportBugToolUse(block)
-        break
-      case 'attempt_completion':
-        await this.handleAttemptCompletionToolUse(block)
-        break
-      case 'todo_write':
-        await this.handleTodoWriteToolUse(block)
-        break
-      case 'todo_read':
-        await this.handleTodoReadToolUse(block)
-        break
-      case 'glob_search':
-        await this.handleGlobSearchToolUse(block)
-        break
-      case 'grep_search':
-        await this.handleGrepSearchToolUse(block)
-        break
-      case 'read_file':
-        await this.handleReadFileToolUse(block)
-        break
-      case 'write_to_file':
-        await this.handleWriteToFileToolUse(block)
-        break
-      case 'use_mcp_tool':
-        await this.handleUseMcpToolUse(block)
-        break
-      case 'access_mcp_resource':
-        await this.handleAccessMcpResourceUse(block)
-        break
-      case 'use_skill':
-        await this.handleUseSkillToolUse(block)
-        break
-      case 'summarize_to_knowledge':
-        await this.handleSummarizeToKnowledgeToolUse(block)
-        break
-      case 'summarize_to_skill':
-        await this.handleSummarizeToSkillToolUse(block)
-        break
-      case 'kb_search':
-        await this.handleKbSearchToolUse(block)
-        break
-      case 'web_fetch':
-        await this.handleWebFetchToolUse(block)
-        break
-      // ----- DB-AI workspace tools (Phase 3, #16 + #17) ---------------------
-      // All DB tools share the same dispatch shape: resolve the session,
-      // call the pure tool function from ./db-tools/, and forward the
-      // structured result via `pushDbToolResult`. DB tools NEVER go through
-      // command approval (docs/database_ai.md §9.5.1); safety comes from
-      // the read-only guard, row caps, query timeouts, and the workspace gate.
-      case 'list_databases':
-        await this.handleDbToolUse(block, (session) => runListDatabases(session))
-        break
-      case 'list_schemas':
-        await this.handleDbToolUse(block, (session) => runListSchemas(session, { database: block.params.database }))
-        break
-      case 'list_tables':
-        await this.handleDbToolUse(block, (session) => runListTables(session, { database: block.params.database ?? '', schema: block.params.schema }))
-        break
-      case 'describe_table':
-        await this.handleDbToolUse(block, (session) =>
-          runDescribeTable(session, {
-            database: block.params.database ?? '',
-            schema: block.params.schema,
-            table: block.params.table ?? ''
-          })
-        )
-        break
-      case 'inspect_indexes':
-        await this.handleDbToolUse(block, (session) =>
-          runInspectIndexes(session, {
-            database: block.params.database ?? '',
-            schema: block.params.schema,
-            table: block.params.table ?? ''
-          })
-        )
-        break
-      case 'sample_rows':
-        await this.handleDbToolUse(block, (session) =>
-          runSampleRows(session, {
-            database: block.params.database ?? '',
-            schema: block.params.schema,
-            table: block.params.table ?? '',
-            limit: block.params.limit
-          })
-        )
-        break
-      case 'count_rows':
-        await this.handleDbToolUse(block, (session) =>
-          runCountRows(session, {
-            database: block.params.database ?? '',
-            schema: block.params.schema,
-            table: block.params.table ?? '',
-            exact: block.params.exact
-          })
-        )
-        break
-      case 'explain_plan':
-        await this.handleDbToolUse(block, (session) =>
-          runExplainPlan(session, {
-            database: block.params.database,
-            schema: block.params.schema,
-            sql: block.params.sql ?? ''
-          })
-        )
-        break
-      case 'execute_readonly_query':
-        await this.handleDbToolUse(block, (session) =>
-          runExecuteReadonlyQuery(session, {
-            database: block.params.database,
-            schema: block.params.schema,
-            sql: block.params.sql ?? ''
-          })
-        )
-        break
-      case 'execute_write_query':
-        await this.handleDbWriteToolUse(block)
-        break
-      case 'suggest_indexes':
-        await this.handleDbToolUse(block, (session) =>
-          runSuggestIndexes(session, {
-            database: block.params.database ?? '',
-            schema: block.params.schema,
-            table: block.params.table ?? '',
-            query_patterns: block.params.query_patterns
-          })
-        )
-        break
-      default:
-        logger.error(`[Task] Unknown tool name: ${block.name}`)
+    const previousActiveToolUseId = this.activeToolUseId
+    this.activeToolUseId = block.id
+    try {
+      switch (block.name) {
+        case 'execute_command':
+          await this.handleExecuteCommandToolUse(block)
+          break
+        case 'ask_followup_question':
+          await this.handleAskFollowupQuestionToolUse(block)
+          break
+        case 'condense':
+          await this.handleCondenseToolUse(block)
+          break
+        case 'report_bug':
+          await this.handleReportBugToolUse(block)
+          break
+        case 'attempt_completion':
+          await this.handleAttemptCompletionToolUse(block)
+          break
+        case 'todo_write':
+          await this.handleTodoWriteToolUse(block)
+          break
+        case 'todo_read':
+          await this.handleTodoReadToolUse(block)
+          break
+        case 'glob_search':
+          await this.handleGlobSearchToolUse(block)
+          break
+        case 'grep_search':
+          await this.handleGrepSearchToolUse(block)
+          break
+        case 'read_file':
+          await this.handleReadFileToolUse(block)
+          break
+        case 'write_to_file':
+          await this.handleWriteToFileToolUse(block)
+          break
+        case 'use_mcp_tool':
+          await this.handleUseMcpToolUse(block)
+          break
+        case 'access_mcp_resource':
+          await this.handleAccessMcpResourceUse(block)
+          break
+        case 'use_skill':
+          await this.handleUseSkillToolUse(block)
+          break
+        case 'summarize_to_knowledge':
+          await this.handleSummarizeToKnowledgeToolUse(block)
+          break
+        case 'summarize_to_skill':
+          await this.handleSummarizeToSkillToolUse(block)
+          break
+        case 'kb_search':
+          await this.handleKbSearchToolUse(block)
+          break
+        case 'web_fetch':
+          await this.handleWebFetchToolUse(block)
+          break
+        // ----- DB-AI workspace tools (Phase 3, #16 + #17) ---------------------
+        // All DB tools share the same dispatch shape: resolve the session,
+        // call the pure tool function from ./db-tools/, and forward the
+        // structured result via `pushDbToolResult`. DB tools NEVER go through
+        // command approval (docs/database_ai.md §9.5.1); safety comes from
+        // the read-only guard, row caps, query timeouts, and the workspace gate.
+        case 'list_databases':
+          await this.handleDbToolUse(block, (session) => runListDatabases(session))
+          break
+        case 'list_schemas':
+          await this.handleDbToolUse(block, (session) => runListSchemas(session, { database: block.params.database }))
+          break
+        case 'list_tables':
+          await this.handleDbToolUse(block, (session) => runListTables(session, { database: block.params.database, schema: block.params.schema }))
+          break
+        case 'describe_table':
+          await this.handleDbToolUse(block, (session) =>
+            runDescribeTable(session, {
+              database: block.params.database ?? '',
+              schema: block.params.schema,
+              table: block.params.table ?? ''
+            })
+          )
+          break
+        case 'inspect_indexes':
+          await this.handleDbToolUse(block, (session) =>
+            runInspectIndexes(session, {
+              database: block.params.database ?? '',
+              schema: block.params.schema,
+              table: block.params.table ?? ''
+            })
+          )
+          break
+        case 'sample_rows':
+          await this.handleDbToolUse(block, (session) =>
+            runSampleRows(session, {
+              database: block.params.database ?? '',
+              schema: block.params.schema,
+              table: block.params.table ?? '',
+              limit: block.params.limit
+            })
+          )
+          break
+        case 'count_rows':
+          await this.handleDbToolUse(block, (session) =>
+            runCountRows(session, {
+              database: block.params.database ?? '',
+              schema: block.params.schema,
+              table: block.params.table ?? '',
+              exact: block.params.exact
+            })
+          )
+          break
+        case 'explain_plan':
+          await this.handleDbToolUse(block, (session) =>
+            runExplainPlan(session, {
+              database: block.params.database,
+              schema: block.params.schema,
+              sql: block.params.sql ?? ''
+            })
+          )
+          break
+        case 'execute_readonly_query':
+          await this.handleDbToolUse(block, (session) =>
+            runExecuteReadonlyQuery(session, {
+              database: block.params.database,
+              schema: block.params.schema,
+              sql: block.params.sql ?? ''
+            })
+          )
+          break
+        case 'execute_write_query':
+          await this.handleDbWriteToolUse(block)
+          break
+        case 'suggest_indexes':
+          await this.handleDbToolUse(block, (session) =>
+            runSuggestIndexes(session, {
+              database: block.params.database ?? '',
+              schema: block.params.schema,
+              table: block.params.table ?? '',
+              query_patterns: block.params.query_patterns
+            })
+          )
+          break
+        default:
+          logger.error(`[Task] Unknown tool name: ${block.name}`)
+      }
+    } finally {
+      this.activeToolUseId = previousActiveToolUseId
     }
     if (!block.name.startsWith('todo_') && block.name !== 'ask_followup_question' && block.name !== 'attempt_completion') {
       await this.addTodoStatusUpdateReminder('')

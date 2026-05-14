@@ -675,6 +675,9 @@ export default {
     key: 'キー',
     username: 'ユーザー名',
     name: '名前',
+    loginUsername: 'Login username',
+    loginUsernamePlaceholder: 'e.g. root / cloud',
+    loginUserName: 'Login account name',
     password: 'パスワード',
     remoteHost: 'リモートホスト',
     port: 'ポート',
@@ -1276,6 +1279,8 @@ export default {
     remainingTime: '残り時間',
     confirm: '確認',
     cancel: 'キャンセル',
+    rememberSelection: 'Remember this selection',
+    rememberSelectionHint: 'Prefer this account next time for this asset',
     tableHeaders: {
       id: 'ID',
       name: '名前',
@@ -1324,6 +1329,7 @@ export default {
       mfaFailed: '二要素認証に失敗しました',
       multipleUsersDetected: '複数のユーザーアカウントが検出されました。選択してください...',
       connectingWithSelectedAccount: '選択したアカウントで接続中...',
+      autoSelected: 'Login account auto-selected',
       userSelectionCanceled: 'ユーザー選択がキャンセルされました'
     },
     qizhi: {

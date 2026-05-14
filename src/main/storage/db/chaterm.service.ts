@@ -440,22 +440,28 @@ export class ChatermDatabaseService {
     }
   }
 
-  createOrganizationAsset(organizationUuid: string, data: { hostname: string; host: string; comment?: string }): any {
+  createOrganizationAsset(
+    organizationUuid: string,
+    data: { hostname: string; host: string; comment?: string; loginUsername?: string | null; loginUserName?: string | null }
+  ): any {
     try {
       const result = createOrganizationAssetLogic(this.db, organizationUuid, data)
       return result
     } catch (error) {
-      logger.error('ChatermDatabaseService.createOrganizationAsset error', { error: error })
+      logger.error('ChatermDatabaseService.createOrganizationAsset error', { errorMessage: error instanceof Error ? error.message : String(error) })
       throw error
     }
   }
 
-  updateOrganizationAsset(uuid: string, data: { hostname?: string; host?: string; comment?: string }): any {
+  updateOrganizationAsset(
+    uuid: string,
+    data: { hostname?: string; host?: string; comment?: string; loginUsername?: string | null; loginUserName?: string | null }
+  ): any {
     try {
       const result = updateOrganizationAssetLogic(this.db, uuid, data)
       return result
     } catch (error) {
-      logger.error('ChatermDatabaseService.updateOrganizationAsset error', { error: error })
+      logger.error('ChatermDatabaseService.updateOrganizationAsset error', { errorMessage: error instanceof Error ? error.message : String(error) })
       throw error
     }
   }

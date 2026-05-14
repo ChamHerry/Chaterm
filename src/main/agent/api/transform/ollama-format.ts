@@ -57,10 +57,11 @@ export function convertToOllamaMessages(anthropicMessages: Anthropic.Messages.Me
                 .join('\n') ?? ''
           }
           ollamaMessages.push({
-            role: 'user',
+            role: 'tool',
+            tool_name: toolMessage.tool_use_id,
             images: toolResultImages.length > 0 ? toolResultImages : undefined,
             content: content
-          })
+          } as Message)
         })
 
         // Process non-tool messages
@@ -86,17 +87,21 @@ export function convertToOllamaMessages(anthropicMessages: Anthropic.Messages.Me
           })
         }
       } else if (anthropicMessage.role === 'assistant') {
-        const { nonToolMessages } = anthropicMessage.content.reduce<{
+        const { nonToolMessages, toolMessages } = anthropicMessage.content.reduce<{
           nonToolMessages: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[]
+          toolMessages: Anthropic.ToolUseBlockParam[]
         }>(
           (acc, part) => {
+            if (part.type === 'tool_use') {
+              acc.toolMessages.push(part)
+              return acc
+            }
             if (part.type === 'text' || part.type === 'image') {
               acc.nonToolMessages.push(part)
             }
-            // Note: Ollama does not support tool calls, so we ignore tool_use messages
             return acc
           },
-          { nonToolMessages: [] }
+          { nonToolMessages: [], toolMessages: [] }
         )
 
         // Process non-tool messages
@@ -117,8 +122,17 @@ export function convertToOllamaMessages(anthropicMessages: Anthropic.Messages.Me
 
         ollamaMessages.push({
           role: 'assistant',
-          content
-        })
+          content,
+          tool_calls:
+            toolMessages.length > 0
+              ? toolMessages.map((toolMessage) => ({
+                  function: {
+                    name: toolMessage.name,
+                    arguments: toolMessage.input ?? {}
+                  }
+                }))
+              : undefined
+        } as Message)
       }
     }
   }

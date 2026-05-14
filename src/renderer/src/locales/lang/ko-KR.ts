@@ -670,6 +670,9 @@ export default {
     key: '키',
     username: '사용자 이름',
     name: '이름',
+    loginUsername: 'Login username',
+    loginUsernamePlaceholder: 'e.g. root / cloud',
+    loginUserName: 'Login account name',
     password: '비밀번호',
     remoteHost: '리모트 호스트',
     port: '포트',
@@ -1271,6 +1274,8 @@ export default {
     remainingTime: '남은 시간',
     confirm: '확인',
     cancel: '취소',
+    rememberSelection: 'Remember this selection',
+    rememberSelectionHint: 'Prefer this account next time for this asset',
     tableHeaders: {
       id: 'ID',
       name: '이름',
@@ -1319,6 +1324,7 @@ export default {
       mfaFailed: '2단계 인증 실패',
       multipleUsersDetected: '여러 사용자 계정이 감지되었습니다. 선택해주세요...',
       connectingWithSelectedAccount: '선택한 계정으로 연결 중...',
+      autoSelected: 'Login account auto-selected',
       userSelectionCanceled: '사용자 선택이 취소되었습니다'
     },
     qizhi: {

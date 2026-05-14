@@ -2548,32 +2548,32 @@ ipcMain.handle('get-organization-assets', async (_, data) => {
 
 ipcMain.handle('create-organization-asset', async (_, data) => {
   try {
-    const { organizationUuid, hostname, host, comment } = data
+    const { organizationUuid, hostname, host, comment, loginUsername, loginUserName } = data
 
     if (!organizationUuid || !hostname || !host) {
       return { data: { message: 'failed', error: 'organizationUuid, hostname, and host are required' } }
     }
 
-    const result = chatermDbService.createOrganizationAsset(organizationUuid, { hostname, host, comment })
+    const result = chatermDbService.createOrganizationAsset(organizationUuid, { hostname, host, comment, loginUsername, loginUserName })
     return result
   } catch (error) {
-    logger.error('Main process create-organization-asset error', { error: error })
+    logger.error('Main process create-organization-asset error', { errorMessage: error instanceof Error ? error.message : String(error) })
     return { data: { message: 'failed', error: error instanceof Error ? error.message : String(error) } }
   }
 })
 
 ipcMain.handle('update-organization-asset', async (_, data) => {
   try {
-    const { uuid, hostname, host, comment } = data
+    const { uuid, hostname, host, comment, loginUsername, loginUserName } = data
 
     if (!uuid) {
       return { data: { message: 'failed', error: 'uuid is required' } }
     }
 
-    const result = chatermDbService.updateOrganizationAsset(uuid, { hostname, host, comment })
+    const result = chatermDbService.updateOrganizationAsset(uuid, { hostname, host, comment, loginUsername, loginUserName })
     return result
   } catch (error) {
-    logger.error('Main process update-organization-asset error', { error: error })
+    logger.error('Main process update-organization-asset error', { errorMessage: error instanceof Error ? error.message : String(error) })
     return { data: { message: 'failed', error: error instanceof Error ? error.message : String(error) } }
   }
 })

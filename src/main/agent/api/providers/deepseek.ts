@@ -12,6 +12,8 @@ import { calculateApiCostOpenAI } from '../../utils/cost'
 import { convertToOpenAiMessages } from '../transform/openai-format'
 import { ApiStream } from '../transform/stream'
 import { convertToR1Format } from '../transform/r1-format'
+import type { ApiCreateMessageRequest, NativeToolChoice, NativeToolDefinition } from '../tools'
+import { OpenAiToolCallStreamAccumulator } from '../tools'
 import { Agent } from 'http'
 import { checkProxyConnectivity, createProxyAgent } from './proxy/index'
 const logger = createLogger('agent')
@@ -53,7 +55,7 @@ export class DeepSeekHandler implements ApiHandler {
         await checkProxyConnectivity(this.options.proxyConfig!)
       }
 
-      const stream = this.createMessage(testSystemPrompt, testMessage)
+      const stream = this.createMessage({ systemPrompt: testSystemPrompt, messages: testMessage, tools: [], toolChoice: 'none' })
       let firstResponse = false
 
       for await (const chunk of stream) {
@@ -109,7 +111,8 @@ export class DeepSeekHandler implements ApiHandler {
     }
   }
 
-  async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  async *createMessage(request: ApiCreateMessageRequest): ApiStream {
+    const { systemPrompt, messages, tools } = request
     const model = this.getModel()
 
     const isDeepseekReasoner = model.id.includes('deepseek-reasoner')
@@ -126,12 +129,19 @@ export class DeepSeekHandler implements ApiHandler {
       messages: openAiMessages,
       stream: true,
       stream_options: { include_usage: true },
+      ...(tools.length > 0 && {
+        tools: this.toOpenAiTools(tools),
+        tool_choice: this.toOpenAiToolChoice(request.toolChoice),
+        parallel_tool_calls: false
+      }),
       // Only set temperature for non-reasoner models
       ...(model.id === 'deepseek-reasoner' ? {} : { temperature: 0 })
     })
 
+    const toolCallAccumulator = new OpenAiToolCallStreamAccumulator()
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta
+      toolCallAccumulator.append(delta?.tool_calls)
       if (delta?.content) {
         yield {
           type: 'text',
@@ -150,6 +160,29 @@ export class DeepSeekHandler implements ApiHandler {
         yield* this.yieldUsage(model.info, chunk.usage)
       }
     }
+
+    for (const toolCall of toolCallAccumulator.flush('deepseek')) {
+      if ('invalid' in toolCall) {
+        yield { type: 'invalid_tool_call', id: toolCall.id, name: toolCall.name, rawArguments: toolCall.rawArguments, error: toolCall.error }
+      } else {
+        yield { type: 'tool_call', toolCall }
+      }
+    }
+  }
+
+  private toOpenAiTools(tools: NativeToolDefinition[]): OpenAI.Chat.ChatCompletionTool[] {
+    return tools.map(
+      (tool) =>
+        ({
+          type: 'function',
+          function: tool.function
+        }) as unknown as OpenAI.Chat.ChatCompletionTool
+    )
+  }
+
+  private toOpenAiToolChoice(toolChoice: NativeToolChoice): OpenAI.Chat.ChatCompletionToolChoiceOption | undefined {
+    if (toolChoice === 'none') return undefined
+    return toolChoice as OpenAI.Chat.ChatCompletionToolChoiceOption
   }
 
   getModel(): { id: DeepSeekModelId; info: ModelInfo } {

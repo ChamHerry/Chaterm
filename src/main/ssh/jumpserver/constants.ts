@@ -12,6 +12,8 @@ export interface ProxyConfig {
 
 export interface JumpServerNavigationPath {
   selectedUserId?: number
+  selectedUsername?: string
+  selectedUserName?: string
   needsPassword: boolean
   password?: string
 }
@@ -56,6 +58,13 @@ export interface JumpServerConnectionInfo {
   needProxy: boolean
   connIdentToken: string
   proxyConfig?: ProxyConfig
+  preferredLoginUsername?: string
+  preferredLoginUserName?: string
+  /**
+   * Deprecated compatibility alias. Prefer preferredLoginUsername.
+   */
+  preferredUsername?: string
+  targetAssetUuid?: string
 }
 
 export const JUMPSERVER_CONSTANTS = {

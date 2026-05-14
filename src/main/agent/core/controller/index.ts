@@ -8,6 +8,7 @@ import { Anthropic } from '@anthropic-ai/sdk'
 
 import pWaitFor from 'p-wait-for'
 import { buildApiHandler, ApiHandler } from '@api/index'
+import { createTextOnlyRequest } from '@api/tools'
 import { McpHub } from '@services/mcp/McpHub'
 import { SkillsManager } from '@services/skills'
 import { version as extensionVersion } from '../../../../../package.json'
@@ -648,7 +649,7 @@ export class Controller {
       ]
 
       // Call AI API to generate command
-      const stream = api.createMessage(systemPrompt, conversation)
+      const stream = api.createMessage(createTextOnlyRequest(systemPrompt, conversation))
       let generatedCommand = ''
 
       try {
@@ -725,7 +726,7 @@ export class Controller {
 
       const systemPrompt = this.buildExplainCommandPrompt(userLanguage)
       const conversation: Anthropic.MessageParam[] = [{ role: 'user' as const, content: trimmed }]
-      const stream = api.createMessage(systemPrompt, conversation)
+      const stream = api.createMessage(createTextOnlyRequest(systemPrompt, conversation))
       let explanation = ''
 
       try {
@@ -860,7 +861,7 @@ export class Controller {
     ]
 
     // Call AI API to generate title
-    const stream = api.createMessage(systemPrompt, conversation)
+    const stream = api.createMessage(createTextOnlyRequest(systemPrompt, conversation))
     let generatedTitle = ''
 
     try {
@@ -959,7 +960,7 @@ export class Controller {
       const api = buildApiHandler(suggestConfig)
       const readStreamText = async (systemPrompt: string, userInput: string): Promise<string> => {
         const conversation: Anthropic.MessageParam[] = [{ role: 'user' as const, content: userInput }]
-        const stream = api.createMessage(systemPrompt, conversation)
+        const stream = api.createMessage(createTextOnlyRequest(systemPrompt, conversation))
         let output = ''
 
         for await (const chunk of stream) {

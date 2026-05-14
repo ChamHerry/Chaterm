@@ -56,6 +56,21 @@ function buildBastionParentTitle(label: string | null | undefined, host: string)
   return name
 }
 
+type OrganizationAssetFormData = {
+  hostname?: string
+  host?: string
+  comment?: string
+  loginUsername?: string | null
+  loginUserName?: string | null
+}
+
+function normalizeNullableText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  const trimmed = String(value).trim()
+  return trimmed ? trimmed.slice(0, 128) : null
+}
+
 export function connectAssetInfoLogic(db: Database.Database, uuid: string): any {
   try {
     const stmt = db.prepare(`
@@ -69,6 +84,7 @@ export function connectAssetInfoLogic(db: Database.Database, uuid: string): any 
     if (!result) {
       const orgAssetStmt = db.prepare(`
         SELECT oa.hostname, oa.host, oa.bastion_comment as comment, a.asset_ip, oa.organization_uuid, oa.uuid, oa.jump_server_type,
+              oa.login_username, oa.login_user_name,
               a.asset_type, a.auth_type, a.port, a.username, a.password, a.key_chain_id, a.need_proxy, a.proxy_name
         FROM t_organization_assets oa
         JOIN t_assets a ON oa.organization_uuid = a.uuid
@@ -777,7 +793,7 @@ export function getOrganizationAssetsLogic(db: Database.Database, organizationUu
 
     let countSql = `SELECT COUNT(*) as total FROM t_organization_assets WHERE organization_uuid = ?`
     let querySql = `
-      SELECT uuid, hostname, host, comment, bastion_comment, data_source, favorite, jump_server_type, created_at, updated_at
+      SELECT uuid, hostname, host, comment, bastion_comment, data_source, favorite, jump_server_type, login_username, login_user_name, created_at, updated_at
       FROM t_organization_assets
       WHERE organization_uuid = ?
     `
@@ -817,7 +833,7 @@ export function getOrganizationAssetsLogic(db: Database.Database, organizationUu
 export function createOrganizationAssetLogic(
   db: Database.Database,
   organizationUuid: string,
-  assetData: { hostname: string; host: string; comment?: string }
+  assetData: { hostname: string; host: string; comment?: string; loginUsername?: string | null; loginUserName?: string | null }
 ): any {
   try {
     if (!organizationUuid || !assetData.hostname || !assetData.host) {
@@ -851,12 +867,23 @@ export function createOrganizationAssetLogic(
     const jumpServerType = extractBastionType(assetType)
 
     const assetUuid = uuidv4()
+    const loginUsername = normalizeNullableText(assetData.loginUsername)
+    const loginUserName = normalizeNullableText(assetData.loginUserName)
     const insertStmt = db.prepare(`
       INSERT INTO t_organization_assets (
-        organization_uuid, hostname, host, comment, uuid, jump_server_type, data_source, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'manual', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        organization_uuid, hostname, host, comment, login_username, login_user_name, uuid, jump_server_type, data_source, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `)
-    const result = insertStmt.run(organizationUuid, assetData.hostname, assetData.host, assetData.comment || '', assetUuid, jumpServerType)
+    const result = insertStmt.run(
+      organizationUuid,
+      assetData.hostname,
+      assetData.host,
+      assetData.comment || '',
+      loginUsername ?? null,
+      loginUserName ?? null,
+      assetUuid,
+      jumpServerType
+    )
 
     return {
       data: {
@@ -866,16 +893,12 @@ export function createOrganizationAssetLogic(
       }
     }
   } catch (error) {
-    logger.error('createOrganizationAssetLogic error', { error: error })
+    logger.error('createOrganizationAssetLogic error', { errorMessage: error instanceof Error ? error.message : String(error) })
     throw error
   }
 }
 
-export function updateOrganizationAssetLogic(
-  db: Database.Database,
-  uuid: string,
-  assetData: { hostname?: string; host?: string; comment?: string }
-): any {
+export function updateOrganizationAssetLogic(db: Database.Database, uuid: string, assetData: OrganizationAssetFormData): any {
   try {
     if (!uuid) {
       return { data: { message: 'failed', error: 'UUID is required' } }
@@ -894,7 +917,7 @@ export function updateOrganizationAssetLogic(
     if (!isManualAsset) {
       const isUpdatingProtectedFields = assetData.hostname !== undefined || assetData.host !== undefined
       if (isUpdatingProtectedFields) {
-        return { data: { message: 'failed', error: 'Only comment can be edited for refreshed assets' } }
+        return { data: { message: 'failed', error: 'Only comment and login username can be edited for refreshed assets' } }
       }
     }
 
@@ -912,6 +935,16 @@ export function updateOrganizationAssetLogic(
     if (assetData.comment !== undefined) {
       updates.push('comment = ?')
       values.push(assetData.comment)
+    }
+    const loginUsername = normalizeNullableText(assetData.loginUsername)
+    if (loginUsername !== undefined) {
+      updates.push('login_username = ?')
+      values.push(loginUsername)
+    }
+    const loginUserName = normalizeNullableText(assetData.loginUserName)
+    if (loginUserName !== undefined) {
+      updates.push('login_user_name = ?')
+      values.push(loginUserName)
     }
 
     if (updates.length === 0) {
@@ -933,7 +966,7 @@ export function updateOrganizationAssetLogic(
       }
     }
   } catch (error) {
-    logger.error('updateOrganizationAssetLogic error', { error: error })
+    logger.error('updateOrganizationAssetLogic error', { errorMessage: error instanceof Error ? error.message : String(error) })
     throw error
   }
 }

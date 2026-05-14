@@ -14,10 +14,11 @@ import { selectSystemPrompt } from '../../prompts/system'
 describe('selectSystemPrompt - workspace × language matrix', () => {
   it('workspace=server + en-US returns classic English SYSTEM_PROMPT', () => {
     const prompt = selectSystemPrompt({ workspace: 'server', language: 'en-US' })
-    // Classic prompt introduces itself as "Chaterm, a seasoned system
-    // administrator" and mentions SSH/OS domain language.
+    // Server prompt introduces itself as Chaterm and now relies on native
+    // tool definitions instead of embedding XML tool-call examples.
     expect(prompt).toContain('Chaterm, a seasoned system administrator')
-    expect(prompt).toContain('execute_command')
+    expect(prompt).toContain('native tool calling')
+    expect(prompt).not.toContain('<execute_command>')
     // Must NOT contain the DB-AI marker phrasing.
     expect(prompt).not.toContain('Chaterm DB-AI')
   })
@@ -130,6 +131,18 @@ describe('chat-system template - DB tool surface', () => {
   it('templates expose execute_readonly_query', () => {
     expect(CHAT_SYSTEM_PROMPT_DATABASE).toContain('execute_readonly_query')
     expect(CHAT_SYSTEM_PROMPT_DATABASE_CN).toContain('execute_readonly_query')
+  })
+
+  it('templates do not include XML tool-call examples', () => {
+    for (const template of [CHAT_SYSTEM_PROMPT_DATABASE, CHAT_SYSTEM_PROMPT_DATABASE_CN]) {
+      expect(template).not.toContain('<' + 'list_tables>')
+      expect(template).not.toContain('</' + 'list_tables>')
+      expect(template).not.toContain('<' + 'list_databases>')
+      expect(template).not.toContain('<' + 'tool_name>')
+      expect(template).not.toContain('<parameter1_name>')
+      expect(template).not.toContain('<parameter2_name>')
+      expect(template).toMatch(/native tool-calling|原生工具调用/)
+    }
   })
 
   it('templates do NOT mention shell/SSH-specific tools', () => {

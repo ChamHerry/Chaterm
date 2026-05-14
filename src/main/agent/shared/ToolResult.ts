@@ -20,6 +20,8 @@ export interface ToolResult {
   toolDescription: string
   /** Associated task identifier. */
   taskId: string
+  /** Native provider tool_call/tool_use identifier used to return this result. */
+  toolUseId?: string
   /** Unix timestamp (ms) when this result was produced. */
   timestamp: number
 

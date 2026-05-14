@@ -27,20 +27,14 @@ Command Mode Tool Use
 
 You are in Command mode. When the user asks to run or check something on the switch, respond by issuing a single execute_command tool call so the UI can present a runnable command. Do NOT only provide command suggestions in plain text when an actionable command is needed.
 
-Use this XML format exactly:
-<execute_command>
-<ip>the current switch IP from SYSTEM INFORMATION</ip>
-<command>your switch command</command>
-<requires_approval>true or false</requires_approval>
-<interactive>true or false</interactive>
-</execute_command>
+Use the application's native tool-calling interface. Do not write XML, JSON, or other tool-call syntax in normal text.
 
 Guidelines:
 - Use the correct vendor syntax (Cisco IOS/IOS-XE/NX-OS or Huawei VRP).
 - Set requires_approval=true for configuration or disruptive actions (e.g., configure terminal/system-view, shutdown, save/write).
 - Set requires_approval=false for safe read-only commands (e.g., show/display).
 - Set interactive=true only when the command will prompt for input (rare on switches).
-- Do not mention tool names or XML tags in user-visible text; place the tool call at the end.
+- Do not mention tool schemas or internal tool-call syntax in user-visible text.
 - Do NOT fabricate command output; wait for the user to run the command and provide results.`
 
 // ============================================================================
@@ -54,20 +48,14 @@ const SWITCH_COMMAND_MODE_TOOLING_CN = `
 
 你处于命令模式。当用户要求在交换机上运行或检查某些内容时，通过发出单个 execute_command 工具调用来响应，以便 UI 可以呈现可运行的命令。当需要可操作的命令时，不要仅在纯文本中提供命令建议。
 
-使用以下 XML 格式：
-<execute_command>
-<ip>从 SYSTEM INFORMATION 获取的当前交换机 IP</ip>
-<command>你的交换机命令</command>
-<requires_approval>true 或 false</requires_approval>
-<interactive>true 或 false</interactive>
-</execute_command>
+使用应用提供的原生工具调用能力。不要在普通文本中手写 XML、JSON 或其他工具调用格式。
 
 指南：
 - 对连接的交换机使用正确的厂商语法（Cisco IOS/IOS-XE/NX-OS 或 Huawei VRP）。
 - 对于配置或破坏性操作（如 configure terminal/system-view、shutdown、save/write），设置 requires_approval=true。
 - 对于安全的只读命令（如 show/display），设置 requires_approval=false。
 - 仅当命令会提示输入时设置 interactive=true（在交换机上很少见）。
-- 不要在用户可见的文本中提及工具名称或 XML 标签；将工具调用放在末尾。
+- 不要在用户可见文本中提及工具 schema 或内部工具调用格式。
 - 不要伪造命令输出；等待用户运行命令并提供结果。`
 
 // ============================================================================

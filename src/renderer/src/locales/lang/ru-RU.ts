@@ -683,6 +683,9 @@ export default {
     key: 'Ключ',
     username: 'Имя пользователя',
     name: 'Имя',
+    loginUsername: 'Login username',
+    loginUsernamePlaceholder: 'e.g. root / cloud',
+    loginUserName: 'Login account name',
     password: 'Пароль',
     remoteHost: 'Удаленный хост',
     port: 'Порт',
@@ -1285,6 +1288,8 @@ export default {
     remainingTime: 'Осталось времени',
     confirm: 'Подтвердить',
     cancel: 'Отмена',
+    rememberSelection: 'Remember this selection',
+    rememberSelectionHint: 'Prefer this account next time for this asset',
     tableHeaders: {
       id: 'ID',
       name: 'Имя',
@@ -1333,6 +1338,7 @@ export default {
       mfaFailed: 'Двухфакторная аутентификация не удалась',
       multipleUsersDetected: 'Обнаружено несколько пользовательских учетных записей, пожалуйста, выберите...',
       connectingWithSelectedAccount: 'Соединение с выбранным учетным записями...',
+      autoSelected: 'Login account auto-selected',
       userSelectionCanceled: 'Выбор пользовательского учетного записи отменен'
     },
     qizhi: {

@@ -656,6 +656,9 @@ export default {
     key: 'مفتاح',
     username: 'اسم المستخدم',
     name: 'الاسم',
+    loginUsername: 'Login username',
+    loginUsernamePlaceholder: 'e.g. root / cloud',
+    loginUserName: 'Login account name',
     password: 'كلمة المرور',
     remoteHost: 'المضيف البعيد',
     port: 'المنفذ',
@@ -1258,6 +1261,8 @@ export default {
     remainingTime: 'الوقت المتبقي',
     confirm: 'تأكيد',
     cancel: 'إلغاء',
+    rememberSelection: 'Remember this selection',
+    rememberSelectionHint: 'Prefer this account next time for this asset',
     tableHeaders: {
       id: 'المعرف',
       name: 'الاسم',
@@ -1306,6 +1311,7 @@ export default {
       mfaFailed: 'فشل المصادقة الثنائية',
       multipleUsersDetected: 'تم الكشف عن حسابات مستخدم متعددة, الرجاء الاختيار...',
       connectingWithSelectedAccount: 'يتم الاتصال بالحساب المختار...',
+      autoSelected: 'Login account auto-selected',
       userSelectionCanceled: 'تم إلغاء اختيار الحساب'
     },
     qizhi: {

@@ -1,10 +1,11 @@
-import type { Anthropic } from '@anthropic-ai/sdk'
 import { Message, Ollama } from 'ollama'
 import type { ApiHandler } from '../'
 import type { ApiHandlerOptions, ModelInfo } from '../../shared/api'
 import { openAiModelInfoSaneDefaults } from '../../shared/api'
 import { convertToOllamaMessages } from '../transform/ollama-format'
 import type { ApiStream } from '../transform/stream'
+import type { ApiCreateMessageRequest, NativeToolDefinition } from '../tools'
+import { parseNativeToolArguments } from '../tools'
 import { withRetry } from '../retry'
 const logger = createLogger('agent')
 
@@ -18,7 +19,8 @@ export class OllamaHandler implements ApiHandler {
   }
 
   @withRetry({ retryAllErrors: true })
-  async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  async *createMessage(request: ApiCreateMessageRequest): ApiStream {
+    const { systemPrompt, messages, tools } = request
     const ollamaMessages: Message[] = [{ role: 'system', content: systemPrompt }, ...convertToOllamaMessages(messages)]
 
     try {
@@ -32,6 +34,7 @@ export class OllamaHandler implements ApiHandler {
       const apiPromise = this.client.chat({
         model: this.getModel().id,
         messages: ollamaMessages,
+        ...(tools.length > 0 && { tools: this.toOllamaTools(tools) as any }),
         stream: true,
         options: {
           num_ctx: Number(this.options.ollamaApiOptionsCtxNum) || 32768
@@ -47,6 +50,49 @@ export class OllamaHandler implements ApiHandler {
             yield {
               type: 'text',
               text: chunk.message.content
+            }
+          }
+
+          const toolCalls = (chunk.message as any).tool_calls
+          if (Array.isArray(toolCalls)) {
+            for (const [index, toolCall] of toolCalls.entries()) {
+              const name = toolCall?.function?.name
+              const args = toolCall?.function?.arguments
+              const parsedArgs =
+                typeof args === 'string'
+                  ? parseNativeToolArguments(args)
+                  : args && typeof args === 'object' && !Array.isArray(args)
+                    ? ({ ok: true, input: args } as const)
+                    : ({ ok: true, input: {} } as const)
+              if (!name) {
+                yield {
+                  type: 'invalid_tool_call',
+                  id: toolCall?.id,
+                  rawArguments: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+                  error: 'Tool call is missing a function name.'
+                }
+                continue
+              }
+              if (!parsedArgs.ok) {
+                yield {
+                  type: 'invalid_tool_call',
+                  id: toolCall?.id,
+                  name,
+                  rawArguments: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+                  error: parsedArgs.error
+                }
+                continue
+              }
+              yield {
+                type: 'tool_call',
+                toolCall: {
+                  id: toolCall.id || `ollama_tool_call_${index}_${Date.now()}`,
+                  name,
+                  input: parsedArgs.input,
+                  rawArguments: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+                  provider: 'ollama'
+                }
+              }
             }
           }
 
@@ -122,5 +168,12 @@ export class OllamaHandler implements ApiHandler {
         error: `Validation failed: ${error instanceof Error ? error.message : String(error)}`
       }
     }
+  }
+
+  private toOllamaTools(tools: NativeToolDefinition[]) {
+    return tools.map((tool) => ({
+      type: 'function',
+      function: tool.function
+    }))
   }
 }

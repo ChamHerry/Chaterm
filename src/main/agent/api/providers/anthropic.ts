@@ -6,6 +6,8 @@ import { withRetry } from '../retry'
 import type { ApiHandler } from '../'
 import type { ApiStream } from '../transform/stream'
 import { ApiHandlerOptions, ModelInfo, anthropicModelInfoSaneDefaults } from '@shared/api'
+import type { ApiCreateMessageRequest, NativeToolDefinition } from '../tools'
+import { parseNativeToolArguments } from '../tools'
 import { checkProxyConnectivity, createProxyAgent } from './proxy/index'
 import type { Agent } from 'http'
 
@@ -36,7 +38,8 @@ export class AnthropicHandler implements ApiHandler {
   }
 
   @withRetry()
-  async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  async *createMessage(request: ApiCreateMessageRequest): ApiStream {
+    const { systemPrompt, messages, tools } = request
     const modelId = this.options.anthropicModelId
     if (!modelId) {
       throw new Error('Anthropic model ID is not configured')
@@ -67,6 +70,10 @@ export class AnthropicHandler implements ApiHandler {
           ...cacheControl
         }
       ],
+      ...(tools.length > 0 && {
+        tools: this.toAnthropicTools(tools),
+        tool_choice: request.toolChoice === 'required' ? ({ type: 'any' } as const) : undefined
+      }),
       messages: messages.map((message, index) => {
         if (index === lastUserMsgIndex || index === secondLastUserMsgIndex) {
           return {
@@ -89,6 +96,8 @@ export class AnthropicHandler implements ApiHandler {
       }),
       stream: true
     })
+
+    const toolBlocks = new Map<number, { id: string; name: string; input: Record<string, unknown>; partialJson: string }>()
 
     for await (const chunk of stream) {
       switch (chunk.type) {
@@ -139,6 +148,19 @@ export class AnthropicHandler implements ApiHandler {
               yield { type: 'text', text: chunk.content_block.text }
               break
             }
+            case 'tool_use': {
+              const input =
+                chunk.content_block.input && typeof chunk.content_block.input === 'object' && !Array.isArray(chunk.content_block.input)
+                  ? (chunk.content_block.input as Record<string, unknown>)
+                  : {}
+              toolBlocks.set(chunk.index, {
+                id: chunk.content_block.id,
+                name: chunk.content_block.name,
+                input,
+                partialJson: ''
+              })
+              break
+            }
           }
           break
         }
@@ -152,11 +174,60 @@ export class AnthropicHandler implements ApiHandler {
               yield { type: 'text', text: chunk.delta.text }
               break
             }
+            case 'input_json_delta': {
+              const block = toolBlocks.get(chunk.index)
+              if (block) {
+                block.partialJson += chunk.delta.partial_json
+              }
+              break
+            }
+          }
+          break
+        }
+        case 'content_block_stop': {
+          const block = toolBlocks.get(chunk.index)
+          if (block) {
+            let input = block.input
+            if (block.partialJson.trim().length > 0) {
+              const parsed = parseNativeToolArguments(block.partialJson)
+              if (!parsed.ok) {
+                yield {
+                  type: 'invalid_tool_call',
+                  id: block.id,
+                  name: block.name,
+                  rawArguments: block.partialJson,
+                  error: parsed.error
+                }
+                toolBlocks.delete(chunk.index)
+                break
+              }
+              input = parsed.input
+            }
+
+            yield {
+              type: 'tool_call',
+              toolCall: {
+                id: block.id,
+                name: block.name,
+                input,
+                rawArguments: block.partialJson || JSON.stringify(input),
+                provider: 'anthropic'
+              }
+            }
+            toolBlocks.delete(chunk.index)
           }
           break
         }
       }
     }
+  }
+
+  private toAnthropicTools(tools: NativeToolDefinition[]): Anthropic.Tool[] {
+    return tools.map((tool) => ({
+      name: tool.function.name,
+      description: tool.function.description,
+      input_schema: tool.function.parameters as Anthropic.Tool.InputSchema
+    }))
   }
 
   getModel(): { id: string; info: ModelInfo } {
@@ -187,7 +258,7 @@ export class AnthropicHandler implements ApiHandler {
       const testSystemPrompt = "This is a connection test. Respond with only the word 'OK'."
       const testMessages: Anthropic.Messages.MessageParam[] = [{ role: 'user', content: 'Connection test' }]
 
-      const stream = this.createMessage(testSystemPrompt, testMessages)
+      const stream = this.createMessage({ systemPrompt: testSystemPrompt, messages: testMessages, tools: [], toolChoice: 'none' })
       let receivedResponse = false
 
       for await (const _chunk of stream) {

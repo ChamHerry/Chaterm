@@ -8,8 +8,10 @@ export const userSelectionError = ref(false)
 export const userList = ref<Array<{ id: number; name: string; username: string }>>([])
 export const selectedUserId = ref<number | null>(null)
 export const currentConnectionId = ref<string | null>(null)
+export const currentTargetAssetUuid = ref<string | null>(null)
 export const userSelectionTimeRemaining = ref(0)
 export const isSubmitting = ref(false)
+export const rememberSelection = ref(false)
 
 // Constants
 const USER_SELECTION_TIMEOUT = 30000 // 30 seconds
@@ -51,7 +53,9 @@ export const resetUserSelectionDialog = () => {
   userList.value = []
   selectedUserId.value = null
   currentConnectionId.value = null
+  currentTargetAssetUuid.value = null
   isSubmitting.value = false
+  rememberSelection.value = false
   // Clear timer
   if (userSelectionTimerInterval) {
     clearInterval(userSelectionTimerInterval)
@@ -64,6 +68,8 @@ export const handleUserSelectionRequest = (data: any) => {
   logger.info('Received user selection request', { id: data.id, userCount: data.users?.length })
 
   currentConnectionId.value = data.id
+  currentTargetAssetUuid.value = data.targetAssetUuid || null
+  rememberSelection.value = false
   userList.value = data.users || []
   // Automatically select the first user by default
   selectedUserId.value = userList.value.length > 0 ? userList.value[0].id : null
@@ -114,16 +120,36 @@ export const submitUserSelection = async () => {
 
   try {
     isSubmitting.value = true
-    logger.info('Submitting user selection', { connectionId: currentConnectionId.value, userId: selectedUserId.value })
+    const connectionId = currentConnectionId.value
+    const userId = selectedUserId.value
+    const selectedUser = userList.value.find((user) => user.id === userId)
+    const targetAssetUuid = currentTargetAssetUuid.value
+    const shouldRememberSelection = rememberSelection.value
+
+    logger.info('Submitting user selection', { connectionId, userId })
 
     const api = (window as any).api
-    await api.sendUserSelectionResponse(currentConnectionId.value, selectedUserId.value)
+    await api.sendUserSelectionResponse(connectionId, userId)
 
     logger.info('User selection submitted successfully')
+    if (shouldRememberSelection && targetAssetUuid && selectedUser) {
+      void api
+        .updateOrganizationAsset({
+          uuid: targetAssetUuid,
+          loginUsername: selectedUser.username,
+          loginUserName: selectedUser.name
+        })
+        .catch((error: unknown) => {
+          logger.warn('Failed to remember JumpServer user selection', {
+            hasTargetAssetUuid: true,
+            errorMessage: error instanceof Error ? error.message : String(error)
+          })
+        })
+    }
     // Close dialog after successful submission
     resetUserSelectionDialog()
   } catch (error) {
-    logger.error('Failed to submit user selection', { error: error })
+    logger.error('Failed to submit user selection', { errorMessage: error instanceof Error ? error.message : String(error) })
     userSelectionError.value = true
     isSubmitting.value = false
   }

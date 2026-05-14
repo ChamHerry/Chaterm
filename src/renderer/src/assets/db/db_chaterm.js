@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS t_organization_assets (
   hostname TEXT,                                    -- 主机名
   host TEXT,                                        -- 主机IP
   jump_server_type TEXT,                            -- 跳板机类型
+  login_username TEXT DEFAULT NULL,                 -- 目标资产登录用户名
+  login_user_name TEXT DEFAULT NULL,                -- 目标资产登录用户显示名称
   favorite INTEGER DEFAULT 2,                       -- 是否收藏
   comment TEXT,                                     -- 自定义备注
   bastion_comment TEXT,                             -- 堡垒机备注

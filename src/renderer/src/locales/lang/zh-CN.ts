@@ -666,6 +666,9 @@ export default {
     key: '密钥',
     username: '用户名',
     name: '名称',
+    loginUsername: '登录用户名',
+    loginUsernamePlaceholder: '如 root / cloud',
+    loginUserName: '登录账号名称',
     password: '密码',
     remoteHost: '连接IP或地址',
     port: '端口',
@@ -1267,6 +1270,8 @@ export default {
     remainingTime: '剩余时间',
     confirm: '确认',
     cancel: '取消',
+    rememberSelection: '记住本次选择',
+    rememberSelectionHint: '下次连接该资产时优先使用该账号',
     tableHeaders: {
       id: 'ID',
       name: '名称',
@@ -1315,6 +1320,7 @@ export default {
       mfaFailed: '双重认证失败',
       multipleUsersDetected: '检测到多个用户账号，请选择...',
       connectingWithSelectedAccount: '正在使用所选账号连接...',
+      autoSelected: '已自动选择登录账号',
       userSelectionCanceled: '已取消用户选择'
     },
     qizhi: {

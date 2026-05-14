@@ -25,6 +25,7 @@ const { runSuggestIndexes, __testing: suggestTesting } = await import('../sugges
 interface MockOverrides {
   dbType?: 'mysql' | 'postgresql'
   databaseName?: string
+  schemaName?: string
   databases?: string[]
   schemas?: string[]
   tables?: string[]
@@ -47,6 +48,7 @@ function makeSession(overrides: MockOverrides = {}): DbAiActiveSession {
     dbType,
     handle: {},
     databaseName: overrides.databaseName,
+    schemaName: overrides.schemaName,
     async listDatabases() {
       return overrides.databases ?? ['appdb']
     },
@@ -158,6 +160,25 @@ describe('runListTables', () => {
     const r = await runListTables(session, { database: 'appdb', schema: 'ghost' })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errorCode).toBe('E_UNKNOWN_SCHEMA')
+  })
+
+  it('falls back to session database and schema when omitted', async () => {
+    const session = makeSession({ databaseName: 'appdb', schemaName: 'public', schemas: ['public'], tables: ['orders'] })
+    const listTables = vi.spyOn(session, 'listTables')
+
+    const r = await runListTables(session, {})
+
+    expect(r.ok).toBe(true)
+    expect(listTables).toHaveBeenCalledWith('appdb', 'public')
+    if (r.ok) expect(r.data.tables).toEqual(['orders'])
+  })
+
+  it('rejects when neither input.database nor session.databaseName is set', async () => {
+    const session = makeSession()
+    const r = await runListTables(session, {})
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errorCode).toBe('E_MISSING_PARAM')
   })
 
   it('accepts omitted schema when engine has no schema layer (MySQL)', async () => {

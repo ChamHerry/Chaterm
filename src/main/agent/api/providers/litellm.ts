@@ -4,13 +4,14 @@
 // Copyright (c) 2025 cline Authors, All rights reserved.
 // Licensed under the Apache License, Version 2.0
 
-import { Anthropic } from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { ApiHandlerOptions, liteLlmDefaultModelId, liteLlmModelInfoSaneDefaults } from '@shared/api'
 import { ApiHandler } from '..'
 import { ApiStream } from '../transform/stream'
 import { convertToOpenAiMessages } from '../transform/openai-format'
 import { convertToGlmMessages } from '../transform/glm-format'
+import type { ApiCreateMessageRequest, NativeToolChoice, NativeToolDefinition } from '../tools'
+import { OpenAiToolCallStreamAccumulator } from '../tools'
 import { createProxyAgent, checkProxyConnectivity, resolveSystemProxy, createProxyAgentFromString } from './proxy/index'
 import type { Agent } from 'http'
 const logger = createLogger('agent')
@@ -133,7 +134,8 @@ export class LiteLlmHandler implements ApiHandler {
     }
   }
 
-  async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  async *createMessage(request: ApiCreateMessageRequest): ApiStream {
+    const { systemPrompt, messages, tools } = request
     // Refresh proxy agent to detect runtime proxy changes
     await this.refreshProxyAgent()
 
@@ -186,7 +188,12 @@ export class LiteLlmHandler implements ApiHandler {
       ...(supportsTemperature && { temperature }),
       stream: true,
       stream_options: { include_usage: true },
-      max_tokens: this.options.liteLlmModelInfo?.maxTokens || 8192
+      max_tokens: this.options.liteLlmModelInfo?.maxTokens || 8192,
+      ...(tools.length > 0 && {
+        tools: this.toOpenAiTools(tools),
+        tool_choice: this.toOpenAiToolChoice(request.toolChoice),
+        parallel_tool_calls: false
+      })
     }
 
     if (reasoningOn) {
@@ -200,10 +207,12 @@ export class LiteLlmHandler implements ApiHandler {
     const stream = await this.client.chat.completions.create(params)
 
     let usageInfo: OpenAI.CompletionUsage | undefined | null = undefined
+    const toolCallAccumulator = new OpenAiToolCallStreamAccumulator()
     // GLM models with -Thinking suffix output <thinking>...</thinking> tags when thinking mode is enabled
     const glmThinkingParser = isGlmModel && reasoningOn ? createGlmThinkingParser() : null
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta
+      toolCallAccumulator.append(delta?.tool_calls)
 
       // Handle normal text content
       if (delta?.content) {
@@ -281,6 +290,29 @@ export class LiteLlmHandler implements ApiHandler {
         totalCost: 0
       }
     }
+
+    for (const toolCall of toolCallAccumulator.flush('litellm')) {
+      if ('invalid' in toolCall) {
+        yield { type: 'invalid_tool_call', id: toolCall.id, name: toolCall.name, rawArguments: toolCall.rawArguments, error: toolCall.error }
+      } else {
+        yield { type: 'tool_call', toolCall }
+      }
+    }
+  }
+
+  private toOpenAiTools(tools: NativeToolDefinition[]): OpenAI.Chat.ChatCompletionTool[] {
+    return tools.map(
+      (tool) =>
+        ({
+          type: 'function',
+          function: tool.function
+        }) as unknown as OpenAI.Chat.ChatCompletionTool
+    )
+  }
+
+  private toOpenAiToolChoice(toolChoice: NativeToolChoice): OpenAI.Chat.ChatCompletionToolChoiceOption | undefined {
+    if (toolChoice === 'none') return undefined
+    return toolChoice as OpenAI.Chat.ChatCompletionToolChoiceOption
   }
 
   getModel() {

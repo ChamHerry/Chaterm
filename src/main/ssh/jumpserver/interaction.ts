@@ -9,6 +9,8 @@ import { hasPasswordPrompt, hasPasswordError, detectDirectConnectionReason, hasN
 import { JUMPSERVER_CONSTANTS } from './constants'
 const logger = createLogger('jumpserver')
 
+const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
 const sendPasswordToStream = (stream: any, password: string, navigationPath: JumpServerNavigationPath, context: string = '') => {
   const actualPassword = password || ''
   navigationPath.needsPassword = !!actualPassword
@@ -34,7 +36,8 @@ export const setupJumpServerInteraction = (
     messageParams?: Record<string, string | number>
   ) => void,
   resolve: (value: { status: string; message: string }) => void,
-  reject: (reason: Error) => void
+  reject: (reason: Error) => void,
+  initialNavigationPath: Partial<JumpServerNavigationPath> = {}
 ) => {
   let outputBuffer = ''
   let connectionPhase: 'connecting' | 'inputIp' | 'selectUser' | 'inputPassword' | 'connected' = 'connecting'
@@ -42,8 +45,12 @@ export const setupJumpServerInteraction = (
   let connectionFailed = false
 
   const navigationPath: JumpServerNavigationPath = {
-    needsPassword: false
+    needsPassword: false,
+    ...initialNavigationPath
   }
+
+  const preferredLoginUsername = connectionInfo.preferredLoginUsername || connectionInfo.preferredUsername
+  const preferredLoginUserName = connectionInfo.preferredLoginUserName
 
   const handleConnectionSuccess = (reason: string) => {
     if (connectionEstablished) return
@@ -101,7 +108,7 @@ export const setupJumpServerInteraction = (
         } catch (error) {
           logger.error('Error getting command list', {
             event: 'jumpserver.commandlist.error',
-            error: error
+            errorMessage: getErrorMessage(error)
           })
         }
 
@@ -114,7 +121,7 @@ export const setupJumpServerInteraction = (
         logger.error('JumpServer exec stream creation failed', {
           event: 'jumpserver.exec.create.error',
           connectionId,
-          error: error
+          errorMessage: getErrorMessage(error)
         })
 
         const mainWindow = BrowserWindow.getAllWindows()[0]
@@ -154,7 +161,7 @@ export const setupJumpServerInteraction = (
         logger.warn('JumpServer asset not found for target IP', {
           event: 'jumpserver.asset.notfound',
           connectionId,
-          targetIp: connectionInfo.targetIp
+          hasTargetIp: !!connectionInfo.targetIp
         })
         connectionFailed = true
         outputBuffer = ''
@@ -185,6 +192,63 @@ export const setupJumpServerInteraction = (
 
         outputBuffer = ''
 
+        const selectUser = (selectedUser: { id: number; username: string; name: string }, reason: string) => {
+          logger.debug('Auto-selecting JumpServer user account', {
+            event: 'jumpserver.user.autoselect',
+            connectionId,
+            selectedUserId: selectedUser.id,
+            reason
+          })
+          sendStatusUpdate('User auto-selected', 'info', 'ssh.jumpserver.autoSelected')
+          connectionPhase = 'inputPassword'
+          navigationPath.selectedUserId = selectedUser.id
+          navigationPath.selectedUsername = selectedUser.username
+          navigationPath.selectedUserName = selectedUser.name
+          stream.write(selectedUser.id.toString() + '\r')
+        }
+
+        if (navigationPath.selectedUserId !== undefined) {
+          const replayUser = users.find((user) => user.id === navigationPath.selectedUserId)
+          if (replayUser) {
+            selectUser(replayUser, 'navigationPath')
+            return
+          }
+          logger.debug('Stored JumpServer user ID not found in prompt users', {
+            event: 'jumpserver.user.replay.miss',
+            connectionId,
+            selectedUserId: navigationPath.selectedUserId,
+            userCount: users.length
+          })
+        }
+
+        if (users.length === 1) {
+          selectUser(users[0], 'singleUser')
+          return
+        }
+
+        if (preferredLoginUsername) {
+          const usernameMatches = users.filter((user) => user.username === preferredLoginUsername)
+          const displayNameMatch = preferredLoginUserName ? usernameMatches.find((user) => user.name === preferredLoginUserName) : undefined
+
+          if (displayNameMatch) {
+            selectUser(displayNameMatch, 'preferredLoginUsernameAndName')
+            return
+          }
+
+          if (usernameMatches.length === 1) {
+            selectUser(usernameMatches[0], 'preferredLoginUsername')
+            return
+          }
+
+          if (usernameMatches.length > 1) {
+            logger.debug('Preferred JumpServer username matched multiple accounts, falling back to dialog', {
+              event: 'jumpserver.user.preferred.ambiguous',
+              connectionId,
+              matchCount: usernameMatches.length
+            })
+          }
+        }
+
         if (!event) {
           logger.error('JumpServer user selection requires event object', { event: 'jumpserver.user.event.missing', connectionId })
           conn.end()
@@ -192,13 +256,22 @@ export const setupJumpServerInteraction = (
           return
         }
 
-        handleJumpServerUserSelectionWithEvent(event, connectionId, users)
+        handleJumpServerUserSelectionWithEvent(event, connectionId, users, {
+          targetAssetUuid: connectionInfo.targetAssetUuid,
+          preferredLoginUsername,
+          preferredLoginUserName
+        })
           .then((selectedUserId) => {
             logger.debug('User selected account', { event: 'jumpserver.user.selected', connectionId, selectedUserId })
             sendStatusUpdate('Connecting with selected account...', 'info', 'ssh.jumpserver.connectingWithSelectedAccount')
             connectionPhase = 'inputPassword'
 
             navigationPath.selectedUserId = selectedUserId
+            const selectedUser = users.find((user) => user.id === selectedUserId)
+            if (selectedUser) {
+              navigationPath.selectedUsername = selectedUser.username
+              navigationPath.selectedUserName = selectedUser.name
+            }
 
             stream.write(selectedUserId.toString() + '\r')
           })
@@ -206,7 +279,7 @@ export const setupJumpServerInteraction = (
             logger.error('User selection failed', {
               event: 'jumpserver.user.selection.error',
               connectionId,
-              error: err
+              errorMessage: getErrorMessage(err)
             })
             sendStatusUpdate('User selection cancelled', 'error', 'ssh.jumpserver.userSelectionCanceled')
             conn.end()

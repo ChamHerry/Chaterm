@@ -666,6 +666,9 @@ export default {
     key: '密鑰',
     username: '用戶名',
     name: '名稱',
+    loginUsername: '登入用戶名',
+    loginUsernamePlaceholder: '如 root / cloud',
+    loginUserName: '登入帳號名稱',
     password: '密碼',
     remoteHost: '連接IP或地址',
     port: '端口',
@@ -1265,6 +1268,8 @@ export default {
     remainingTime: '剩餘時間',
     confirm: '確認',
     cancel: '取消',
+    rememberSelection: '記住本次選擇',
+    rememberSelectionHint: '下次連接該資產時優先使用該帳號',
     tableHeaders: {
       id: 'ID',
       name: '名稱',
@@ -1313,6 +1318,7 @@ export default {
       mfaFailed: '雙重認證失敗',
       multipleUsersDetected: '檢測到多個用戶賬號，請選擇...',
       connectingWithSelectedAccount: '正在使用所選賬號連接...',
+      autoSelected: '已自動選擇登入帳號',
       userSelectionCanceled: '已取消用戶選擇'
     },
     qizhi: {

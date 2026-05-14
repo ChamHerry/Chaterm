@@ -9,6 +9,8 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import { withRetry } from '../retry'
 import type { ApiHandler } from '../'
 import type { ApiStream } from '../transform/stream'
+import type { ApiCreateMessageRequest } from '../tools'
+import { ProviderToolCallingUnsupportedError } from '../tools'
 import { convertToR1Format } from '../transform/r1-format'
 import { ApiHandlerOptions, BedrockModelId, bedrockModels, ModelInfo } from '../../shared/api'
 import { calculateApiCostOpenAI } from '../../utils/cost'
@@ -33,11 +35,16 @@ export class AwsBedrockHandler implements ApiHandler {
   }
 
   @withRetry()
-  async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+  async *createMessage(request: ApiCreateMessageRequest): ApiStream {
+    const { systemPrompt, messages, tools } = request
     // cross region inference requires prefixing the model id with the region
 
     const modelId = await this.getModelId()
     const model = this.getModel()
+
+    if (tools.length > 0) {
+      throw new ProviderToolCallingUnsupportedError('bedrock', modelId)
+    }
 
     // Check if this is an Amazon Nova model
     if (modelId.includes('amazon.nova')) {
@@ -749,7 +756,7 @@ ${combinedContent}
         await checkProxyConnectivity(this.options.proxyConfig!)
       }
 
-      const stream = this.createMessage(testSystemPrompt, testMessages)
+      const stream = this.createMessage({ systemPrompt: testSystemPrompt, messages: testMessages, tools: [], toolChoice: 'none' })
       let receivedResponse = false
 
       for await (const chunk of stream) {

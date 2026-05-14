@@ -686,6 +686,9 @@ export default {
     key: 'Clé',
     username: "Nom d'utilisateur",
     name: 'Nom',
+    loginUsername: 'Login username',
+    loginUsernamePlaceholder: 'e.g. root / cloud',
+    loginUserName: 'Login account name',
     password: 'Mot de passe',
     remoteHost: 'Hôte distant',
     port: 'Port',
@@ -1292,6 +1295,8 @@ export default {
     remainingTime: 'Temps restant',
     confirm: 'Confirmer',
     cancel: 'Annuler',
+    rememberSelection: 'Remember this selection',
+    rememberSelectionHint: 'Prefer this account next time for this asset',
     tableHeaders: {
       id: 'ID',
       name: 'Nom',
@@ -1340,6 +1345,7 @@ export default {
       mfaFailed: 'Authentification à deux facteurs échouée',
       multipleUsersDetected: 'Multiple comptes utilisateur détectés, veuillez sélectionner...',
       connectingWithSelectedAccount: 'Connexion avec le compte sélectionné...',
+      autoSelected: 'Login account auto-selected',
       userSelectionCanceled: "Sélection d'utilisateur annulée"
     },
     qizhi: {

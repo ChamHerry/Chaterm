@@ -25,6 +25,7 @@
 // to import.
 import type { ToolParamName } from '../assistant-message'
 import type { TaskWorkspace as SharedTaskWorkspace } from '@shared/task-workspace'
+import type { JsonSchemaObject, JsonSchemaValue, NativeToolDefinition } from '@api/tools'
 
 /**
  * Workspace in which a Task operates.
@@ -326,3 +327,188 @@ export function isToolAllowed(name: ToolUseName, workspace: TaskWorkspace): bool
  * array. Order matches `toolMetadata` declaration order.
  */
 export const registeredToolNames: readonly ToolUseName[] = toolMetadata.map((m) => m.name)
+
+const toolDescriptions: Record<ToolUseName, string> = {
+  execute_command: 'Execute a CLI command on the selected remote host or host group.',
+  write_to_file: 'Write or patch a file in the current workspace.',
+  read_file: 'Read file contents from the current workspace or an offloaded tool output file.',
+  ask_followup_question: 'Ask the user a concise follow-up question when required information is missing.',
+  attempt_completion: 'Finish the task with a final result once the requested work is complete.',
+  new_task: 'Create a new task with preloaded context.',
+  condense: 'Condense the current conversation context.',
+  report_bug: 'Prepare a bug report for the current task.',
+  todo_write: 'Create or update the task todo list.',
+  todo_read: 'Read the current task todo list.',
+  glob_search: 'Find files matching a glob pattern on the current host.',
+  grep_search: 'Search file contents with a regular expression on the current host.',
+  use_mcp_tool: 'Invoke a tool exposed by an enabled MCP server.',
+  access_mcp_resource: 'Read a resource exposed by an enabled MCP server.',
+  use_skill: 'Activate a reusable skill by name.',
+  summarize_to_knowledge: 'Save a concise knowledge-base summary from the current conversation.',
+  summarize_to_skill: 'Convert the current conversation into reusable skill instructions.',
+  kb_search: 'Search the local knowledge base.',
+  web_fetch: 'Fetch and extract content from a web URL.',
+  list_databases: 'List every database visible to the current database connection.',
+  list_schemas: 'List schemas inside a database. Defaults to the current database when omitted.',
+  list_tables: 'List tables and views inside a database and schema. Defaults to the current database/schema when omitted.',
+  describe_table: 'Return columns, types, keys, and DDL for a specific table.',
+  inspect_indexes: 'Return indexes defined on a table, including column order and uniqueness.',
+  sample_rows: 'Return a small read-only sample of rows from a table.',
+  count_rows: 'Return an approximate or exact row count for a table.',
+  explain_plan: 'Return a database execution plan for a SQL statement.',
+  execute_readonly_query: 'Execute a read-only SQL query and return capped tabular results.',
+  execute_write_query: 'Execute a write SQL statement through the approval-gated database flow.',
+  suggest_indexes: 'Suggest indexes for a table and optional query patterns.'
+}
+
+const paramSchemas: Record<ToolParamName, JsonSchemaValue> = {
+  ip: { type: 'string', description: 'Target host IP/hostname, or a comma-separated list for host groups.' },
+  command: { type: 'string', description: 'Command to execute.' },
+  depositExperience: { type: 'boolean', description: 'Whether this completion contains reusable experience worth extracting.' },
+  requires_approval: { type: 'boolean', description: 'Whether this operation requires explicit approval.' },
+  interactive: { type: 'boolean', description: 'Whether the command requires interactive user input.' },
+  path: { type: 'string', description: 'File or directory path.' },
+  file_path: { type: 'string', description: 'File path.' },
+  offset: { type: 'integer', description: 'Line offset or byte offset depending on the tool.' },
+  content: { type: 'string', description: 'Text content.' },
+  diff: { type: 'string', description: 'Patch diff content.' },
+  regex: { type: 'string', description: 'Regular expression pattern.' },
+  file_pattern: { type: 'string', description: 'File glob include pattern.' },
+  recursive: { type: 'boolean', description: 'Whether to recurse into child paths.' },
+  pattern: { type: 'string', description: 'Search or glob pattern.' },
+  include: { type: 'string', description: 'Glob include filter.' },
+  limit: { type: 'integer', description: 'Maximum number of results or rows.' },
+  sort: { type: 'string', enum: ['path', 'none'], description: 'Sort mode.' },
+  case_sensitive: { type: 'boolean', description: 'Whether matching is case-sensitive.' },
+  context_lines: { type: 'integer', description: 'Number of context lines around matches.' },
+  max_matches: { type: 'integer', description: 'Maximum number of matches.' },
+  action: { type: 'string', description: 'Action name.' },
+  url: { type: 'string', description: 'URL to fetch.' },
+  coordinate: { type: 'string', description: 'Coordinate value.' },
+  text: { type: 'string', description: 'Text value.' },
+  server_name: { type: 'string', description: 'MCP server name.' },
+  tool_name: { type: 'string', description: 'MCP tool name.' },
+  arguments: { type: 'object', description: 'Tool arguments object.', additionalProperties: true },
+  uri: { type: 'string', description: 'Resource URI.' },
+  question: { type: 'string', description: 'Question to ask the user.' },
+  options: { type: 'array', description: 'Optional selectable answers.', items: { type: 'string' } },
+  response: { type: 'string', description: 'User response.' },
+  result: { type: 'string', description: 'Final result text.' },
+  context: { type: 'string', description: 'Context payload.' },
+  title: { type: 'string', description: 'Bug report title.' },
+  what_happened: { type: 'string', description: 'Bug report symptom.' },
+  steps_to_reproduce: { type: 'string', description: 'Steps to reproduce.' },
+  api_request_output: { type: 'string', description: 'API request output summary.' },
+  additional_context: { type: 'string', description: 'Additional context.' },
+  todos: { type: 'array', description: 'Todo items.', items: { type: 'object', additionalProperties: true } },
+  name: { type: 'string', description: 'Name.' },
+  file_name: { type: 'string', description: 'File name.' },
+  summary: { type: 'string', description: 'Summary content.' },
+  skill_name: { type: 'string', description: 'Skill name.' },
+  description: { type: 'string', description: 'Description.' },
+  query: { type: 'string', description: 'Search query or SQL-related natural-language query.' },
+  max_results: { type: 'integer', description: 'Maximum number of results.' },
+  extract_mode: { type: 'string', enum: ['markdown', 'text'], description: 'Web extraction mode.' },
+  max_chars: { type: 'integer', description: 'Maximum extracted characters.' },
+  database: { type: 'string', description: 'Database name. Optional DB tools default to the current database.' },
+  schema: { type: 'string', description: 'Schema name. Optional DB tools default to the current schema.' },
+  table: { type: 'string', description: 'Table name.' },
+  sql: { type: 'string', description: 'SQL statement.' },
+  exact: { type: 'boolean', description: 'Whether to force an exact row count.' },
+  query_patterns: { type: 'string', description: 'Query patterns to consider when suggesting indexes.' }
+}
+
+const requiredParamsByTool: Partial<Record<ToolUseName, readonly ToolParamName[]>> = {
+  execute_command: ['ip', 'command', 'requires_approval', 'interactive'],
+  write_to_file: ['path', 'content'],
+  read_file: ['path', 'limit', 'offset'],
+  ask_followup_question: ['question'],
+  attempt_completion: ['result', 'depositExperience'],
+  new_task: ['context'],
+  report_bug: ['title', 'what_happened', 'steps_to_reproduce', 'api_request_output', 'additional_context'],
+  glob_search: ['pattern'],
+  grep_search: ['pattern'],
+  use_mcp_tool: ['server_name', 'tool_name', 'arguments'],
+  access_mcp_resource: ['server_name', 'uri'],
+  use_skill: ['name'],
+  summarize_to_knowledge: ['file_name', 'summary'],
+  summarize_to_skill: ['skill_name', 'description', 'content'],
+  kb_search: ['query'],
+  web_fetch: ['url'],
+  describe_table: ['table'],
+  inspect_indexes: ['table'],
+  sample_rows: ['table'],
+  count_rows: ['table'],
+  explain_plan: ['sql'],
+  execute_readonly_query: ['sql'],
+  execute_write_query: ['sql']
+}
+
+export function getNativeToolInputSchema(tool: ToolMetadata): JsonSchemaObject {
+  const properties: Record<string, JsonSchemaValue> = {}
+  for (const paramName of tool.paramNames) {
+    properties[paramName] = paramSchemas[paramName] ?? { type: 'string' }
+  }
+
+  return {
+    type: 'object',
+    properties,
+    required: [...(requiredParamsByTool[tool.name] ?? [])],
+    additionalProperties: false
+  }
+}
+
+export function getNativeToolDefinitions(workspace: TaskWorkspace): NativeToolDefinition[] {
+  return getAllowedTools(workspace).map((tool) => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: toolDescriptions[tool.name],
+      parameters: getNativeToolInputSchema(tool)
+    }
+  }))
+}
+
+export function isRegisteredToolName(name: string): name is ToolUseName {
+  return registeredToolNames.includes(name as ToolUseName)
+}
+
+export function normalizeNativeToolInput(name: ToolUseName, input: Record<string, unknown>): Partial<Record<ToolParamName, string>> {
+  const meta = getToolMetadata(name)
+  if (!meta) return {}
+
+  const params: Partial<Record<ToolParamName, string>> = {}
+  for (const paramName of meta.paramNames) {
+    const value = input[paramName]
+    if (value === undefined || value === null) continue
+    if (typeof value === 'string') {
+      params[paramName] = value
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      params[paramName] = String(value)
+    } else {
+      params[paramName] = JSON.stringify(value)
+    }
+  }
+  return params
+}
+
+export function validateNativeToolInput(name: ToolUseName, input: Record<string, unknown>): { ok: true } | { ok: false; error: string } {
+  const meta = getToolMetadata(name)
+  if (!meta) return { ok: false, error: `Tool '${name}' is not registered.` }
+
+  for (const required of requiredParamsByTool[name] ?? []) {
+    const value = input[required]
+    if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+      return { ok: false, error: `Missing required parameter '${required}' for tool '${name}'.` }
+    }
+  }
+
+  const allowed = new Set(meta.paramNames)
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key as ToolParamName)) {
+      return { ok: false, error: `Unexpected parameter '${key}' for tool '${name}'.` }
+    }
+  }
+
+  return { ok: true }
+}

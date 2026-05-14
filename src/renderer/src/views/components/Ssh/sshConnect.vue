@@ -1638,7 +1638,10 @@ const connectSSH = async (_opts?: { isAutoReconnect?: boolean }) => {
           wakeupNewTab: props.connectData.wakeupNewTab === true,
           wakeupTabId: props.connectData.wakeupSource ? props.connectData.uuid : '',
           disablePoolReuse: props.connectData.disablePoolReuse === true || props.connectData.wakeupNewTab === true || isWakeupSession,
-          disablePostConnectProbe: skipAssetLookup
+          disablePostConnectProbe: skipAssetLookup,
+          preferredLoginUsername: assetInfo?.login_username || undefined,
+          preferredLoginUserName: assetInfo?.login_user_name || undefined,
+          targetAssetUuid: assetInfo?.organization_uuid ? assetInfo.uuid : undefined
         }
         connData.needProxy = assetInfo?.need_proxy === 1 || false
         if (connData.needProxy) {

@@ -64,14 +64,12 @@ Write operation rules — follow exactly one of the two cases below:
 
 TOOL USE
 
-You have access to a set of metadata and knowledge tools. Tool calls use XML-style tags:
+You have access to metadata and knowledge tools through the application's native tool-calling interface.
 
-<tool_name>
-<parameter1_name>value1</parameter1_name>
-<parameter2_name>value2</parameter2_name>
-</tool_name>
-
-You may call one tool per message (todo_read / todo_write may be combined with one other tool). You will receive the tool result in the user's response and decide the next step based on it.
+- Do not write tool calls as XML, JSON snippets, code blocks, or plain text.
+- When metadata is needed, call the provided tool directly with structured arguments.
+- You may call one tool per message (todo_read / todo_write may be combined with one other tool).
+- You will receive the tool result in the user's response and decide the next step based on it.
 
 # Database Tools ({{dbType}})
 
@@ -244,14 +242,12 @@ export const CHAT_SYSTEM_PROMPT_DATABASE_CN = `你是 Chaterm DB-AI，专为用�
 
 工具使用
 
-你可以使用一组元数据和知识工具。工具调用采用 XML 风格标签：
+你可以通过应用提供的原生工具调用能力使用元数据和知识工具。
 
-<tool_name>
-<parameter1_name>值1</parameter1_name>
-<parameter2_name>值2</parameter2_name>
-</tool_name>
-
-每条消息只能调用一个工具（todo_read / todo_write 可与另一工具合并调用）。工具结果会在用户响应中返回，你需要根据结果决定下一步。
+- 不要在回复文本中手写 XML、JSON、代码块或其他工具调用格式。
+- 需要元数据时，直接调用系统提供的结构化工具并传入结构化参数。
+- 每条消息只能调用一个工具（todo_read / todo_write 可与另一工具合并调用）。
+- 工具结果会在用户响应中返回，你需要根据结果决定下一步。
 
 # 数据库工具（{{dbType}}）
 
@@ -399,8 +395,8 @@ function formatPlaceholderValue(value: string | undefined, fallback: string, quo
   if (typeof value === 'string' && value.trim() !== '') {
     // Sanitise user-controlled values before embedding in the system prompt.
     // Replace newlines/CR to prevent prompt injection via crafted database or
-    // schema names. Strip XML-like tags so they cannot be mistaken for tool
-    // call markup. Wrap the result in a JSON string so even single-line
+    // schema names. Strip tag-like markup and wrap the result in a JSON
+    // string so even single-line
     // injection attempts ("ignore previous instructions") are inert data.
     const sanitised = value
       .replace(/[\r\n]+/g, ' ')

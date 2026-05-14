@@ -1,5 +1,6 @@
 // ssh2jumpserver/parser.ts
 const logger = createLogger('jumpserver')
+const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 export interface Asset {
   id: number
@@ -148,7 +149,7 @@ function parseAssets(output: string): Asset[] {
         }
         assets.push(asset)
       } catch (e) {
-        logger.debug('Failed to parse asset line', { event: 'jumpserver.parser.asset.error', error: e })
+        logger.debug('Failed to parse asset line', { event: 'jumpserver.parser.asset.error', errorMessage: getErrorMessage(e) })
       }
     }
   }
@@ -204,9 +205,24 @@ export function parseJumpServerUsers(output: string): JumpServerUser[] {
 
   let foundUserHeader = false
 
+  const isUserHeader = (line: string): boolean => {
+    if (!line.includes('|')) return false
+    const columns = line.split('|').map((column) => column.trim())
+    const normalizedColumns = columns.map((column) => column.toUpperCase())
+    const hasId = normalizedColumns.includes('ID')
+    const hasEnglishHeader = normalizedColumns.includes('NAME') && normalizedColumns.includes('USERNAME')
+    const hasChineseHeader = columns.includes('名称') && columns.includes('用户名')
+    return hasId && (hasEnglishHeader || hasChineseHeader)
+  }
+
+  const isStopLine = (line: string): boolean => {
+    const trimmed = line.trim()
+    return /^(Tips:|Back:|ID>|提示：|返回：)/i.test(trimmed)
+  }
+
   for (const line of lines) {
     // Detect user table header (ID | NAME | USERNAME)
-    if (line.includes('ID') && line.includes('NAME') && line.includes('USERNAME')) {
+    if (isUserHeader(line)) {
       foundUserHeader = true
       continue
     }
@@ -218,7 +234,7 @@ export function parseJumpServerUsers(output: string): JumpServerUser[] {
 
     if (foundUserHeader) {
       // Stop parsing when we hit Tips or other non-table content
-      if (line.includes('Tips:') || line.includes('Back:') || line.includes('ID>')) {
+      if (isStopLine(line)) {
         break
       }
 
@@ -232,7 +248,7 @@ export function parseJumpServerUsers(output: string): JumpServerUser[] {
           }
           users.push(user)
         } catch (e) {
-          logger.debug('Failed to parse user line', { event: 'jumpserver.parser.user.error', error: e })
+          logger.debug('Failed to parse user line', { event: 'jumpserver.parser.user.error', errorMessage: getErrorMessage(e) })
         }
       }
     }
@@ -247,5 +263,10 @@ export function parseJumpServerUsers(output: string): JumpServerUser[] {
  * @returns true if user selection is required
  */
 export function hasUserSelectionPrompt(output: string): boolean {
-  return output.includes('account ID') && output.includes('ID') && output.includes('NAME') && output.includes('USERNAME')
+  const hasEnglishPrompt = /account\s+ID/i.test(output)
+  const hasChinesePrompt = output.includes('输入系统用户ID直接登录')
+  const hasEnglishHeader = output.includes('ID') && output.includes('NAME') && output.includes('USERNAME')
+  const hasChineseHeader = output.includes('ID') && output.includes('名称') && output.includes('用户名')
+
+  return (hasEnglishPrompt || hasChinesePrompt) && (hasEnglishHeader || hasChineseHeader)
 }

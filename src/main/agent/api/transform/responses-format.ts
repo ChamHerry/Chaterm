@@ -33,15 +33,19 @@ export function convertToResponsesInput(anthropicMessages: Anthropic.Messages.Me
             image_url: `data:${part.source.media_type};base64,${part.source.data}`,
             detail: 'auto'
           })
+        } else if (part.type === 'tool_result') {
+          input.push({
+            type: 'function_call_output',
+            call_id: part.tool_use_id,
+            output: typeof part.content === 'string' ? part.content : JSON.stringify(part.content ?? [])
+          } as unknown as ResponseInputItem)
         }
-        // tool_result blocks are skipped for Responses API
       }
 
       if (contentParts.length > 0) {
         input.push({ role: 'user', content: contentParts })
       }
     } else if (msg.role === 'assistant') {
-      // Extract text content from assistant messages
       const textParts = msg.content
         .filter((part): part is Anthropic.TextBlockParam => part.type === 'text')
         .map((part) => part.text)
@@ -49,6 +53,17 @@ export function convertToResponsesInput(anthropicMessages: Anthropic.Messages.Me
 
       if (textParts) {
         input.push({ role: 'assistant', content: textParts })
+      }
+
+      for (const part of msg.content) {
+        if (part.type === 'tool_use') {
+          input.push({
+            type: 'function_call',
+            call_id: part.id,
+            name: part.name,
+            arguments: JSON.stringify(part.input ?? {})
+          } as unknown as ResponseInputItem)
+        }
       }
     }
   }
