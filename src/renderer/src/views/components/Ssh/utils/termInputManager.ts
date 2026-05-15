@@ -48,7 +48,11 @@ const updateCommandBarHeight = (globalInput: boolean) => {
 }
 
 export const inputManager = {
-  registerInstances(target: Target, key) {
+  registerInstances(target: Target, key: string) {
+    if (!key) {
+      logger.debug('Skipping terminal registration with empty key')
+      return
+    }
     const exists = componentInstances.value.find((item) => item.key === key)
     if (!exists) {
       componentInstances.value.push({ target, key })
@@ -58,7 +62,11 @@ export const inputManager = {
     }
   },
 
-  unregisterInstances(key) {
+  unregisterInstances(key: string) {
+    if (!key) {
+      logger.debug('Skipping terminal unregister with empty key')
+      return
+    }
     const index = componentInstances.value.findIndex((item) => item.key === key)
     if (index !== -1) {
       componentInstances.value.splice(index, 1)
@@ -71,6 +79,10 @@ export const inputManager = {
   },
 
   setActiveTerm(key: string) {
+    if (!key) {
+      logger.debug('Skipping active terminal update with empty key')
+      return
+    }
     const instance = componentInstances.value.find((item) => item.key === key)
     if (instance) {
       activeTermId.value = key

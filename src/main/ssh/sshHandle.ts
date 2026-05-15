@@ -43,8 +43,8 @@ import {
   jumpserverMarkedCommands,
   jumpserverConnectionStatus,
   jumpserverLastCommand,
-  createJumpServerExecStream,
-  executeCommandOnJumpServerExec,
+  executeCommandOnJumpServerExecQueued,
+  clearJumpServerExecState,
   jumpserverSessionPids
 } from './jumpserverHandle'
 import path from 'path'
@@ -55,6 +55,15 @@ import { getAlgorithmsByAssetType } from './algorithms'
 import { connectBastionByType, shellBastionSession, resizeBastionSession, writeBastionSession, disconnectBastionSession } from './bastionPlugin'
 import { shouldSkipPostConnectProbe } from './postConnectProbePolicy'
 import { sftpConnectionInfoMap } from './sftpTransfer'
+import {
+  consumeShellCloseInfo,
+  clearSessionConnectionState,
+  lastConnectionErrorBySession,
+  manualDisconnectSessions,
+  pendingShellCloseInfoBySession,
+  recordSessionConnectionError,
+  setPendingShellCloseInfo
+} from './sessionCloseInfo'
 
 // Maximum buffer size before forcing an immediate flush (prevents unbounded growth during bulk output)
 const MAX_BUFFER_SIZE = 64 * 1024 // 64KB
@@ -569,144 +578,6 @@ const startSshTunnel = async (payload: SshTunnelStartPayload): Promise<{ success
     })
     return { success: false, error: errorMessage }
   }
-}
-
-// Track how a shell session ended so renderer can decide whether to auto reconnect.
-type ShellCloseReason = 'manual' | 'network' | 'unknown'
-
-type ShellCloseInfoPayload = {
-  reason: ShellCloseReason
-  isNetworkDisconnect: boolean
-  errorCode?: string
-  errorMessage?: string
-}
-
-const manualDisconnectSessions = new Set<string>()
-// Per-session close metadata consumed once when shell close is emitted to renderer.
-const lastConnectionErrorBySession = new Map<string, { errorCode?: string; errorMessage?: string; isNetwork: boolean }>()
-const pendingShellCloseInfoBySession = new Map<string, ShellCloseInfoPayload>()
-
-// Known socket/network error codes that indicate network interruption.
-const NETWORK_ERROR_CODES = new Set([
-  'ETIMEDOUT',
-  'ECONNRESET',
-  'ECONNABORTED',
-  'EPIPE',
-  'ENETDOWN',
-  'ENETUNREACH',
-  'EHOSTDOWN',
-  'EHOSTUNREACH',
-  'ECONNREFUSED'
-])
-
-// Message pattern fallback for errors that do not expose a stable error code.
-const NETWORK_ERROR_PATTERNS = [
-  /timed out/i,
-  /keepalive/i,
-  /connection lost/i,
-  /connection reset/i,
-  /socket hang up/i,
-  /network is unreachable/i,
-  /not reachable/i,
-  /broken pipe/i
-]
-
-// Classify whether an SSH/connect error is likely caused by network break.
-const isLikelyNetworkDisconnect = (err: any): boolean => {
-  const code = String(err?.code || err?.errno || '').toUpperCase()
-  const message = String(err?.message || '')
-
-  if (code && NETWORK_ERROR_CODES.has(code)) {
-    return true
-  }
-
-  return NETWORK_ERROR_PATTERNS.some((pattern) => pattern.test(message))
-}
-
-// Cache close reason so shell close IPC can report a precise disconnect reason.
-const setPendingShellCloseInfo = (sessionId: string, info: ShellCloseInfoPayload) => {
-  if (!sessionId) return
-  pendingShellCloseInfoBySession.set(sessionId, info)
-  logger.info('Pending shell close info updated', {
-    event: 'ssh.shell.close.pending',
-    connectionId: sessionId,
-    reason: info.reason,
-    isNetworkDisconnect: info.isNetworkDisconnect,
-    errorCode: info.errorCode,
-    errorMessage: info.errorMessage
-  })
-}
-
-// Record the latest connection failure for later close/end event classification.
-const recordSessionConnectionError = (sessionId: string, err: any) => {
-  if (!sessionId) return
-  const errorCode = String(err?.code || err?.errno || '').toUpperCase() || undefined
-  const errorMessage = String(err?.message || '').trim() || undefined
-  const isNetwork = isLikelyNetworkDisconnect(err)
-
-  lastConnectionErrorBySession.set(sessionId, {
-    errorCode,
-    errorMessage,
-    isNetwork
-  })
-
-  setPendingShellCloseInfo(sessionId, {
-    reason: isNetwork ? 'network' : 'unknown',
-    isNetworkDisconnect: isNetwork,
-    errorCode,
-    errorMessage
-  })
-
-  logger.info('Session connection error recorded', {
-    event: 'ssh.session.error.recorded',
-    connectionId: sessionId,
-    errorCode,
-    errorMessage,
-    isNetworkDisconnect: isNetwork
-  })
-}
-
-// Clear reconnect-related transient state for a session.
-const clearSessionConnectionState = (sessionId: string) => {
-  if (!sessionId) return
-  manualDisconnectSessions.delete(sessionId)
-  lastConnectionErrorBySession.delete(sessionId)
-  pendingShellCloseInfoBySession.delete(sessionId)
-}
-
-// Consume close metadata once to prevent duplicate reconnect decisions.
-const consumeShellCloseInfo = (sessionId: string): ShellCloseInfoPayload => {
-  if (!sessionId) {
-    return { reason: 'unknown', isNetworkDisconnect: false }
-  }
-
-  if (manualDisconnectSessions.has(sessionId)) {
-    clearSessionConnectionState(sessionId)
-    return {
-      reason: 'manual',
-      isNetworkDisconnect: false
-    }
-  }
-
-  const pending = pendingShellCloseInfoBySession.get(sessionId)
-  if (pending) {
-    pendingShellCloseInfoBySession.delete(sessionId)
-    lastConnectionErrorBySession.delete(sessionId)
-    return pending
-  }
-
-  const lastError = lastConnectionErrorBySession.get(sessionId)
-  if (lastError) {
-    lastConnectionErrorBySession.delete(sessionId)
-    return {
-      reason: lastError.isNetwork ? 'network' : 'unknown',
-      isNetworkDisconnect: lastError.isNetwork,
-      errorCode: lastError.errorCode,
-      errorMessage: lastError.errorMessage
-    }
-  }
-
-  return { reason: 'unknown', isNetworkDisconnect: false }
 }
 
 // Set KeyboardInteractive authentication timeout (milliseconds)
@@ -1651,11 +1522,24 @@ export const registerSSHHandlers = () => {
         event.sender.send(`ssh:shell:stderr:${id}`, data.toString('utf8'))
       })
 
+      stream.on('error', (err) => {
+        recordSessionConnectionError(id, err)
+      })
+
       stream.on('close', () => {
         flushBuffer()
-        logger.debug('JumpServer shell stream closed', { event: 'jumpserver.stream.close', connectionId: id })
-        event.sender.send(`ssh:shell:close:${id}`)
+        const closeInfo = consumeShellCloseInfo(id)
+        logger.info('JumpServer shell stream closed', {
+          event: 'jumpserver.stream.close',
+          connectionId: id,
+          closeReason: closeInfo.reason,
+          isNetworkDisconnect: closeInfo.isNetworkDisconnect,
+          errorCode: closeInfo.errorCode,
+          errorMessage: closeInfo.errorMessage
+        })
+        event.sender.send(`ssh:shell:close:${id}`, closeInfo)
         jumpserverShellStreams.delete(id)
+        clearJumpServerExecState(id)
       })
 
       return { status: 'success', message: 'JumpServer Shell ready' }
@@ -1831,7 +1715,7 @@ export const registerSSHHandlers = () => {
     if (jumpserverConnections.has(id)) {
       const stream = jumpserverShellStreams.get(id)
       if (!stream) {
-        return { status: 'error', message: 'JumpServer Shell not found' }
+        return { status: 'deferred', message: 'JumpServer Shell not ready' }
       }
 
       try {
@@ -1945,7 +1829,8 @@ export const registerSSHHandlers = () => {
    */
   async function executeCommandOnJumpServerAsset(
     id: string,
-    cmd: string
+    cmd: string,
+    kind: 'cwd' | 'user-command' = 'user-command'
   ): Promise<{
     success: boolean
     stdout?: string
@@ -1954,33 +1839,7 @@ export const registerSSHHandlers = () => {
     exitSignal?: string
     error?: string
   }> {
-    // Get or create dedicated exec stream (not user interaction stream)
-    let execStream: any
-    try {
-      execStream = await createJumpServerExecStream(id)
-    } catch (error) {
-      return {
-        success: false,
-        error: `Failed to create exec stream: ${error instanceof Error ? error.message : String(error)}`,
-        stdout: '',
-        stderr: '',
-        exitCode: undefined,
-        exitSignal: undefined
-      }
-    }
-
-    if (!execStream) {
-      return {
-        success: false,
-        error: 'JumpServer exec stream not available',
-        stdout: '',
-        stderr: '',
-        exitCode: undefined,
-        exitSignal: undefined
-      }
-    }
-
-    return executeCommandOnJumpServerExec(execStream, cmd)
+    return executeCommandOnJumpServerExecQueued(id, cmd, { kind })
   }
 
   ipcMain.handle('ssh:conn:exec', async (_event, { id, cmd }) => {
@@ -2134,6 +1993,16 @@ export const registerSSHHandlers = () => {
 
     // Check if it's a JumpServer connection
     if (jumpserverConnections.has(id)) {
+      manualDisconnectSessions.add(id)
+      logger.info('Mark JumpServer session as manual disconnect', {
+        event: 'ssh.disconnect.manual.mark',
+        connectionId: id
+      })
+      setPendingShellCloseInfo(id, {
+        reason: 'manual',
+        isNetworkDisconnect: false
+      })
+
       const stream = jumpserverShellStreams.get(id)
       if (stream) {
         stream.end()
@@ -2145,8 +2014,8 @@ export const registerSSHHandlers = () => {
       if (execStream) {
         logger.debug('Cleaning up JumpServer exec stream', { event: 'jumpserver.exec.cleanup', connectionId: id })
         execStream.end()
-        jumpserverExecStreams.delete(id)
       }
+      clearJumpServerExecState(id)
 
       const connData = jumpserverConnections.get(id)
       if (connData) {
@@ -2422,15 +2291,7 @@ export const registerSSHHandlers = () => {
     if (jumpserverData) {
       await sleep(1500)
 
-      let execStream: any
-      try {
-        execStream = await createJumpServerExecStream(id)
-      } catch {
-        logger.info('Get jumpserver exec stream error')
-        return
-      }
-
-      const pidResult = await executeCommandOnJumpServerExec(execStream, 'echo "__PID__$$\\n__PPID__$PPID"').catch(() => null)
+      const pidResult = await executeCommandOnJumpServerExecQueued(id, 'echo "__PID__$$\\n__PPID__$PPID"', { kind: 'pid-probe' }).catch(() => null)
       logger.info('Get jumpserver pid result', { pidResult })
 
       if (!pidResult?.success || !pidResult.stdout) return
@@ -2445,7 +2306,7 @@ export const registerSSHHandlers = () => {
 
       for (let i = 0; i < 5; i++) {
         await new Promise((r) => setTimeout(r, 300))
-        const psResult = await executeCommandOnJumpServerExec(execStream, psCmd).catch(() => null)
+        const psResult = await executeCommandOnJumpServerExecQueued(id, psCmd, { kind: 'pid-probe' }).catch(() => null)
         if (!psResult?.success || !psResult.stdout) continue
 
         const shellPid =
@@ -2531,7 +2392,7 @@ export const registerSSHHandlers = () => {
       '; while :; do child=$(grep -l "^PPid:[[:space:]]*${pid}$" /proc/[0-9]*/status 2>/dev/null | head -1 | cut -d/ -f3); [ -z "$child" ] && break; pid=$child; done; result=$(readlink /proc/$pid/cwd 2>/dev/null); if [ -z "$result" ]; then result=$(sudo -n readlink /proc/$pid/cwd 2>/dev/null); fi; echo "$result"'
     let result: any
     if (jumpserverShellStreams.has(id)) {
-      result = await executeCommandOnJumpServerAsset(id, cmd)
+      result = await executeCommandOnJumpServerAsset(id, cmd, 'cwd')
     } else {
       const conn = sshConnections.get(id)
       if (!conn) return { success: false, cwd: null, reason: `no_ssh_conn:${id}` }
@@ -2630,8 +2491,7 @@ const getSystemInfo = async (id: string): Promise<CommandGenerationContext> => {
   const isJumpServerConnection = jumpserverConnections.has(id) || jumpserverShellStreams.has(id)
 
   if (isJumpServerConnection) {
-    const execStream = await createJumpServerExecStream(id)
-    const execResult = await executeCommandOnJumpServerExec(execStream, systemInfoScript)
+    const execResult = await executeCommandOnJumpServerExecQueued(id, systemInfoScript, { kind: 'system-info' })
     if (!execResult.stdout?.trim()) {
       throw new Error(execResult.error || 'Failed to get system info from JumpServer exec stream')
     }

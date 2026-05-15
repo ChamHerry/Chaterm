@@ -2,11 +2,12 @@ import { BrowserWindow } from 'electron'
 import type { Client } from 'ssh2'
 import type { JumpServerConnectionInfo, JumpServerNavigationPath } from './constants'
 import { jumpserverConnections, jumpserverShellStreams, jumpserverConnectionStatus, jumpserverLastCommand, jumpserverInputBuffer } from './state'
-import { createJumpServerExecStream, executeCommandOnJumpServerExec } from './streamManager'
+import { clearJumpServerExecState, createJumpServerExecStream, executeCommandOnJumpServerExecQueued } from './streamManager'
 import { parseJumpServerUsers, hasUserSelectionPrompt } from './parser'
 import { handleJumpServerUserSelectionWithEvent } from './userSelection'
 import { hasPasswordPrompt, hasPasswordError, detectDirectConnectionReason, hasNoAssetsPrompt, createNoAssetsError } from './navigator'
 import { JUMPSERVER_CONSTANTS } from './constants'
+import { recordSessionConnectionError } from '../sessionCloseInfo'
 const logger = createLogger('jumpserver')
 
 const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -71,22 +72,25 @@ export const setupJumpServerInteraction = (
     jumpserverConnectionStatus.set(connectionId, { isVerified: true })
 
     createJumpServerExecStream(connectionId)
-      .then(async (execStream) => {
+      .then(async () => {
         const readyResult = {
           hasSudo: false,
           commandList: [] as string[]
         }
 
         try {
-          const commandListResult = await executeCommandOnJumpServerExec(
-            execStream,
-            'sh -c \'if command -v bash >/dev/null 2>&1; then bash -lc "compgen -A builtin; compgen -A command"; bash -ic "compgen -A alias" 2>/dev/null; else IFS=:; for d in $PATH; do [ -d "$d" ] || continue; for f in "$d"/*; do [ -x "$f" ] && printf "%s\\n" "${f##*/}"; done; done; fi\' | sort -u'
+          const commandListResult = await executeCommandOnJumpServerExecQueued(
+            connectionId,
+            'sh -c \'if command -v bash >/dev/null 2>&1; then bash -lc "compgen -A builtin; compgen -A command"; bash -ic "compgen -A alias" 2>/dev/null; else IFS=:; for d in $PATH; do [ -d "$d" ] || continue; for f in "$d"/*; do [ -x "$f" ] && printf "%s\\n" "${f##*/}"; done; done; fi\' | sort -u',
+            { kind: 'command-list' }
           ).then(
             (value) => ({ status: 'fulfilled' as const, value }),
             (reason) => ({ status: 'rejected' as const, reason })
           )
 
-          const sudoCheckResult = await executeCommandOnJumpServerExec(execStream, 'sudo -n true 2>/dev/null && echo true || echo false').then(
+          const sudoCheckResult = await executeCommandOnJumpServerExecQueued(connectionId, 'sudo -n true 2>/dev/null && echo true || echo false', {
+            kind: 'sudo-check'
+          }).then(
             (value) => ({ status: 'fulfilled' as const, value }),
             (reason) => ({ status: 'rejected' as const, reason })
           )
@@ -383,6 +387,7 @@ export const setupJumpServerInteraction = (
     jumpserverConnectionStatus.delete(connectionId)
     jumpserverLastCommand.delete(connectionId)
     jumpserverInputBuffer.delete(connectionId)
+    clearJumpServerExecState(connectionId)
 
     if (connectionPhase !== 'connected' && !connectionFailed) {
       reject(new Error('Connection closed before completion'))
@@ -391,6 +396,7 @@ export const setupJumpServerInteraction = (
 
   stream.on('error', (error: Error) => {
     logger.error('JumpServer stream error', { event: 'jumpserver.stream.error', connectionId, error: error.message })
+    recordSessionConnectionError(connectionId, error)
     reject(error)
   })
 }

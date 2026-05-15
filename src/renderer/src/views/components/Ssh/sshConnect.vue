@@ -247,6 +247,7 @@ const props = defineProps({
   isActive: { type: Boolean, default: false }
 })
 const queryCommandFlag = ref(false)
+const terminalInputKey = computed(() => props.currentConnectionId)
 
 // Merged suggestion list: local autocomplete + AI suggestion
 const displaySuggestions = computed(() => {
@@ -388,6 +389,9 @@ let autoReconnectTimer: ReturnType<typeof setTimeout> | null = null
 const terminal = ref<Terminal | null>(null)
 const fitAddon = ref<FitAddon | null>(null)
 const connectionId = ref('')
+const shellReady = ref(false)
+const pendingRemoteResize = ref<{ cols: number; rows: number } | null>(null)
+const lastSentRemoteResize = ref<{ cols: number; rows: number } | null>(null)
 const traceAiSuggest = (message: string, meta?: Record<string, unknown>) => {
   logger.debug(message, {
     event: 'ssh.aiSuggest.trace',
@@ -757,7 +761,7 @@ onMounted(async () => {
         {
           termOndata: handleExternalInput
         },
-        connectionId.value
+        terminalInputKey.value
       )
     }, 100)
     terminalContainerResize()
@@ -859,7 +863,7 @@ onMounted(async () => {
     if (event.data?.type === 'TRIGGER_SEARCH') {
       // Only the currently active terminal responds to search events
       const activeTerm = inputManager.getActiveTerm()
-      if (activeTerm.id && connectionId.value && activeTerm.id === connectionId.value) {
+      if (activeTerm.id && activeTerm.id === terminalInputKey.value) {
         openSearch()
       }
     }
@@ -868,7 +872,7 @@ onMounted(async () => {
 
   eventBus.on('clearCurrentTerminal', () => {
     const activeTerm = inputManager.getActiveTerm()
-    if (activeTerm.id && connectionId.value && activeTerm.id === connectionId.value) {
+    if (activeTerm.id && activeTerm.id === terminalInputKey.value) {
       contextAct('clearTerm')
     }
   })
@@ -876,21 +880,21 @@ onMounted(async () => {
   // Listen for font size change events
   eventBus.on('fontSizeIncrease', () => {
     const activeTerm = inputManager.getActiveTerm()
-    if (activeTerm.id && connectionId.value && activeTerm.id === connectionId.value) {
+    if (activeTerm.id && activeTerm.id === terminalInputKey.value) {
       contextAct('fontsizeLargen')
     }
   })
 
   eventBus.on('fontSizeDecrease', () => {
     const activeTerm = inputManager.getActiveTerm()
-    if (activeTerm.id && connectionId.value && activeTerm.id === connectionId.value) {
+    if (activeTerm.id && activeTerm.id === terminalInputKey.value) {
       contextAct('fontsizeSmaller')
     }
   })
 
   eventBus.on('triggerAiSuggest', () => {
     const activeTerm = inputManager.getActiveTerm()
-    if (activeTerm.id && connectionId.value && activeTerm.id === connectionId.value) {
+    if (activeTerm.id && activeTerm.id === terminalInputKey.value) {
       triggerAiSuggestByShortcut()
     }
   })
@@ -913,7 +917,7 @@ onMounted(async () => {
 
   if (terminal.value?.textarea) {
     const handleTextareaFocus = () => {
-      inputManager.setActiveTerm(connectionId.value)
+      inputManager.setActiveTerm(terminalInputKey.value)
       window.electron?.ipcRenderer?.send('terminal:focus-changed', true)
     }
     const handleTextareaBlur = () => {
@@ -969,6 +973,7 @@ const handlePinchZoomStatusChanged = async (enabled: boolean) => {
 onBeforeUnmount(() => {
   manualDisconnectRequested.value = true
   resetAutoReconnectState()
+  resetRemoteResizeState()
   cachedSelectionButton = null
   if (sendTerminalStateTimer) {
     clearTimeout(sendTerminalStateTimer)
@@ -982,7 +987,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('wheel', handleWheel)
   window.removeEventListener('online', handleBrowserOnline)
   window.removeEventListener('offline', handleBrowserOffline)
-  inputManager.unregisterInstances(connectionId.value)
+  inputManager.unregisterInstances(terminalInputKey.value)
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
@@ -1481,6 +1486,7 @@ const connectSSH = async (_opts?: { isAutoReconnect?: boolean }) => {
   connectInProgress.value = true
   try {
     manualDisconnectRequested.value = false
+    resetRemoteResizeState()
     clearAutoReconnectTimer()
     let connectSuccess = false
     logger.info('Start SSH connect', {
@@ -1802,6 +1808,8 @@ const startShell = async () => {
     initZmodem()
     if (result.status === 'success') {
       isConnected.value = true
+      shellReady.value = true
+      schedulePendingRemoteResizeFlush()
       void loadOsInfoOnce()
       const removeDataListener = api.onShellData(connectionId.value, (response: MarkedResponse) => {
         consumeZmodemIncoming(response)
@@ -1811,6 +1819,7 @@ const startShell = async () => {
       })
       const removeCloseListener = api.onShellClose(connectionId.value, (closeInfo?: ShellCloseInfo) => {
         isConnected.value = false
+        resetRemoteResizeState()
         logger.info('Shell close received', {
           event: 'ssh.shell.close.renderer',
           connectionId: connectionId.value,
@@ -1891,25 +1900,82 @@ let shellOpenedAt = 0
 const RESIZE_GUARD_MS = 500
 let pendingResizeTimer: ReturnType<typeof setTimeout> | null = null
 
+const resetRemoteResizeState = (clearPending = true) => {
+  shellReady.value = false
+  lastSentRemoteResize.value = null
+  if (clearPending) {
+    pendingRemoteResize.value = null
+  }
+  if (pendingResizeTimer) {
+    clearTimeout(pendingResizeTimer)
+    pendingResizeTimer = null
+  }
+}
+
+const schedulePendingRemoteResizeFlush = (delayMs = 0) => {
+  if (pendingResizeTimer) {
+    clearTimeout(pendingResizeTimer)
+  }
+  pendingResizeTimer = setTimeout(() => {
+    pendingResizeTimer = null
+    const pending = pendingRemoteResize.value
+    if (!pending) return
+    pendingRemoteResize.value = null
+    resizeSSH(pending.cols, pending.rows)
+  }, delayMs)
+}
+
 const resizeSSH = async (cols, rows) => {
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) {
+    return
+  }
+
+  const latestSize = { cols, rows }
+  if (!connectionId.value || !isConnected.value || !shellReady.value) {
+    pendingRemoteResize.value = latestSize
+    logger.debug('Deferring remote resize until shell is ready', {
+      event: 'ssh.resize.deferred.renderer',
+      connectionId: connectionId.value || undefined,
+      hasConnectionId: !!connectionId.value,
+      isConnected: isConnected.value,
+      shellReady: shellReady.value,
+      cols,
+      rows
+    })
+    return
+  }
+
   const elapsed = Date.now() - shellOpenedAt
   if (shellOpenedAt > 0 && elapsed < RESIZE_GUARD_MS) {
     // Inside guard window: schedule a single deferred resize at end of guard period
-    if (pendingResizeTimer) clearTimeout(pendingResizeTimer)
-    pendingResizeTimer = setTimeout(
-      () => {
-        pendingResizeTimer = null
-        resizeSSH(cols, rows)
-      },
-      RESIZE_GUARD_MS - elapsed + 50
-    )
+    pendingRemoteResize.value = latestSize
+    schedulePendingRemoteResizeFlush(RESIZE_GUARD_MS - elapsed + 50)
     return
   }
+
+  if (lastSentRemoteResize.value?.cols === cols && lastSentRemoteResize.value?.rows === rows) {
+    return
+  }
+
   try {
     const result = await api.resizeShell(connectionId.value, cols, rows)
+    if (result.status === 'deferred') {
+      pendingRemoteResize.value = latestSize
+      logger.debug('Remote resize deferred by main process', {
+        event: 'ssh.resize.deferred.main',
+        connectionId: connectionId.value,
+        message: result.message,
+        cols,
+        rows
+      })
+      schedulePendingRemoteResizeFlush(300)
+      return
+    }
     if (result.status === 'error') {
       logger.error('Resize failed', { message: result.message })
+      return
     }
+    lastSentRemoteResize.value = latestSize
   } catch (error) {
     logger.error('Failed to resize terminal', { error: error })
   }
@@ -2733,19 +2799,11 @@ watch(
   { immediate: true }
 )
 
-// Reload OS info and re-register inputManager when connectionId changes (e.g., reconnect)
-watch(connectionId, (newId, oldId) => {
+// Reload OS info when backend SSH session id changes (e.g., reconnect).
+// inputManager uses stable UI tab id, so it must not be re-registered by backend session id.
+watch(connectionId, () => {
   cachedOsInfoLoaded.value = false
   cachedOsInfo.value = undefined
-  if (oldId && newId && oldId !== newId) {
-    inputManager.unregisterInstances(oldId)
-    inputManager.registerInstances(
-      {
-        termOndata: handleExternalInput
-      },
-      newId
-    )
-  }
 })
 
 const checkFullScreenClear = (data: string) => {
@@ -4743,6 +4801,7 @@ const handleKeyInput = (e) => {
 const disconnectSSH = async () => {
   manualDisconnectRequested.value = true
   resetAutoReconnectState()
+  resetRemoteResizeState()
   logger.info('Manual disconnect requested', {
     event: 'ssh.disconnect.manual.renderer',
     connectionId: connectionId.value
@@ -4817,7 +4876,7 @@ const focus = () => {
     // Ensure terminal scrolls to bottom, keeping cursor in visible area
     terminal.value.scrollToBottom()
     terminal.value.focus()
-    inputManager.setActiveTerm(connectionId.value)
+    inputManager.setActiveTerm(terminalInputKey.value)
   }
 }
 
@@ -4850,7 +4909,7 @@ const handleWheel = (e: WheelEvent) => {
   if (!props.isActive) return
 
   const activeTerm = inputManager.getActiveTerm()
-  if (activeTerm.id !== connectionId.value) return
+  if (activeTerm.id !== terminalInputKey.value) return
 
   const activeElement = document.activeElement
   const terminalContainer = terminalElement.value?.closest('.terminal-container')
@@ -4878,7 +4937,7 @@ const handleGlobalKeyDown = (e: KeyboardEvent) => {
     contextmenu.value.hide()
   }
   const activeTerm = inputManager.getActiveTerm()
-  if (!activeTerm.id || !connectionId.value || activeTerm.id !== connectionId.value) return
+  if (!activeTerm.id || !connectionId.value || activeTerm.id !== terminalInputKey.value) return
 
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 
@@ -5257,8 +5316,8 @@ const isListingOutputLine = (bufferLineNumber: number, term: Terminal): boolean 
 
 const isThisTerminalActive = (): boolean => {
   const activeTerm = inputManager.getActiveTerm()
-  if (!activeTerm?.id || !connectionId.value) return false
-  if (activeTerm.id !== connectionId.value) return false
+  if (!activeTerm?.id) return false
+  if (activeTerm.id !== terminalInputKey.value) return false
   if (props.activeTabId !== props.currentConnectionId) return false
   if (!props.isActive) return false
   return true

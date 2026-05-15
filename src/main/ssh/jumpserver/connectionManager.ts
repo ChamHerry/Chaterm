@@ -12,6 +12,14 @@ import { MAX_JUMPSERVER_MFA_ATTEMPTS } from './constants'
 import { setupJumpServerInteraction } from './interaction'
 import { handleJumpServerKeyboardInteractive } from './mfa'
 import { buildErrorResponse } from './errorUtils'
+import {
+  clearSessionConnectionState,
+  lastConnectionErrorBySession,
+  manualDisconnectSessions,
+  pendingShellCloseInfoBySession,
+  recordSessionConnectionError,
+  setPendingShellCloseInfo
+} from '../sessionCloseInfo'
 import path from 'path'
 import fs from 'fs'
 const logger = createLogger('jumpserver')
@@ -81,6 +89,7 @@ const attemptJumpServerConnection = async (
   attemptCount: number = 0
 ): Promise<{ status: string; message: string }> => {
   const connectionId = connectionInfo.id
+  clearSessionConnectionState(connectionId)
 
   const sendStatusUpdate = (
     message: string,
@@ -154,6 +163,7 @@ const attemptJumpServerConnection = async (
     sendStatusUpdate('Connecting to remote bastion host...', 'info', 'ssh.jumpserver.connectingToBastionHost')
 
     const conn = new Client()
+    let keyboardInteractiveTriggered = false
 
     const connectConfig: {
       host: string
@@ -201,6 +211,7 @@ const attemptJumpServerConnection = async (
     }
 
     conn.on('keyboard-interactive', async (_name, _instructions, _instructionsLang, prompts, finish) => {
+      keyboardInteractiveTriggered = true
       try {
         if (attemptCount === 0) {
           sendStatusUpdate('Two-factor authentication required, please enter verification code...', 'info', 'ssh.jumpserver.mfaRequired')
@@ -248,16 +259,20 @@ const attemptJumpServerConnection = async (
     })
 
     conn.on('error', (err) => {
-      logger.error('JumpServer connection error', { event: 'jumpserver.error', error: err.message })
+      recordSessionConnectionError(connectionId, err)
+      logger.error('JumpServer connection error', { event: 'jumpserver.error', connectionId, error: err.message })
 
       if ((err as any).level === 'client-authentication') {
-        logger.info('JumpServer MFA authentication failed', {
-          event: 'jumpserver.mfa.failed',
+        const authEvent = keyboardInteractiveTriggered ? 'jumpserver.mfa.failed' : 'jumpserver.auth.failed'
+        logger.info('JumpServer authentication failed', {
+          event: authEvent,
+          connectionId,
           attemptCount: attemptCount + 1,
-          maxAttempts: MAX_JUMPSERVER_MFA_ATTEMPTS
+          maxAttempts: MAX_JUMPSERVER_MFA_ATTEMPTS,
+          authMethodSelected: keyboardInteractiveTriggered ? 'keyboard-interactive' : connectionInfo.privateKey ? 'publickey' : 'password'
         })
 
-        if (event) {
+        if (event && keyboardInteractiveTriggered) {
           event.sender.send('ssh:keyboard-interactive-result', {
             id: connectionId,
             attempts: attemptCount + 1,
@@ -265,16 +280,17 @@ const attemptJumpServerConnection = async (
           })
         }
 
-        if (attemptCount < MAX_JUMPSERVER_MFA_ATTEMPTS - 1) {
+        if (keyboardInteractiveTriggered && attemptCount < MAX_JUMPSERVER_MFA_ATTEMPTS - 1) {
           const retryError = new Error(`JumpServer MFA authentication failed`)
           ;(retryError as any).shouldRetry = true
           ;(retryError as any).attemptCount = attemptCount
+          ;(retryError as any).keyboardInteractiveTriggered = true
           reject(retryError)
           return
         }
       }
 
-      if (event) {
+      if (event && keyboardInteractiveTriggered) {
         event.sender.send('ssh:keyboard-interactive-result', {
           id: connectionId,
           status: 'failed',
@@ -282,7 +298,31 @@ const attemptJumpServerConnection = async (
         })
       }
 
-      reject(new Error(`JumpServer connection failed: ${err.message}`))
+      const finalError = new Error(`JumpServer connection failed: ${err.message}`)
+      ;(finalError as any).keyboardInteractiveTriggered = keyboardInteractiveTriggered
+      reject(finalError)
+    })
+
+    conn.on('close', () => {
+      if (manualDisconnectSessions.has(connectionId) || pendingShellCloseInfoBySession.has(connectionId)) return
+      const lastError = lastConnectionErrorBySession.get(connectionId)
+      setPendingShellCloseInfo(connectionId, {
+        reason: lastError?.isNetwork ? 'network' : 'unknown',
+        isNetworkDisconnect: !!lastError?.isNetwork,
+        errorCode: lastError?.errorCode,
+        errorMessage: lastError?.errorMessage || 'JumpServer connection closed'
+      })
+    })
+
+    conn.on('end', () => {
+      if (manualDisconnectSessions.has(connectionId) || pendingShellCloseInfoBySession.has(connectionId)) return
+      const lastError = lastConnectionErrorBySession.get(connectionId)
+      setPendingShellCloseInfo(connectionId, {
+        reason: lastError?.isNetwork ? 'network' : 'unknown',
+        isNetworkDisconnect: !!lastError?.isNetwork,
+        errorCode: lastError?.errorCode,
+        errorMessage: lastError?.errorMessage || 'JumpServer connection ended'
+      })
     })
 
     conn.connect(connectConfig)
@@ -317,7 +357,7 @@ export const handleJumpServerConnection = async (
     }
   }
 
-  if (event) {
+  if (event && (lastError as any)?.keyboardInteractiveTriggered) {
     event.sender.send('ssh:keyboard-interactive-result', {
       id: connectionInfo.id,
       status: 'failed',

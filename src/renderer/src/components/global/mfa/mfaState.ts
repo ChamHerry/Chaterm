@@ -104,14 +104,12 @@ export const handleOtpError = (data: any) => {
     } else {
       logger.warn('MFA verification failed, showing error')
       showOtpDialogErr.value = true
-      otpAttempts.value += 1
-      // Don't clear input immediately, allow user to modify based on existing input
-      // otpCode.value = ''
+      otpAttempts.value = typeof data.attempts === 'number' ? data.attempts : otpAttempts.value + 1
+      otpCode.value = ''
 
-      if (otpAttempts.value >= MAX_OTP_ATTEMPTS) {
+      if (data.final === true || otpAttempts.value >= MAX_OTP_ATTEMPTS) {
         logger.warn('Exceeded maximum attempts, closing dialog')
-        showOtpDialog.value = false
-        cancelOtp()
+        resetOtpDialog()
       }
     }
   } else {
@@ -183,9 +181,6 @@ export const submitOtpCode = async () => {
     await api.submitKeyboardInteractiveResponse(currentOtpId.value, otpCode.value)
 
     logger.info('OTP code submitted successfully')
-
-    // Reset status after successful input
-    resetOtpDialog()
   } catch (error) {
     logger.error('Failed to submit OTP code', { error: error })
     showOtpDialogErr.value = true

@@ -1,9 +1,37 @@
 import { hasPasswordPrompt, hasPasswordError, detectDirectConnectionReason } from './navigator'
 import { hasUserSelectionPrompt } from './parser'
 import { OutputParser } from './executor'
-import { jumpserverConnections, jumpserverExecStreams, deleteExecStreamPromise, getExecStreamPromise, setExecStreamPromise } from './state'
+import {
+  jumpserverConnections,
+  jumpserverExecStreams,
+  clearExecQueueState,
+  decrementExecQueueDepth,
+  deleteExecQueueTail,
+  deleteExecStreamPromise,
+  getExecQueueDepth,
+  getExecQueueTail,
+  getExecStreamPromise,
+  incrementExecQueueDepth,
+  setExecQueueTail,
+  setExecStreamPromise
+} from './state'
 import { JUMPSERVER_CONSTANTS, type JumpServerNavigationPath } from './constants'
 const logger = createLogger('jumpserver')
+
+export type JumpServerExecCommandResult = {
+  success: boolean
+  stdout?: string
+  stderr?: string
+  exitCode?: number
+  exitSignal?: string
+  error?: string
+}
+
+type JumpServerExecOptions = {
+  connectionId?: string
+  timeoutMs?: number
+  kind?: 'command-list' | 'sudo-check' | 'system-info' | 'pid-probe' | 'cwd' | 'user-command'
+}
 
 export async function navigateToJumpServerAsset(
   stream: any,
@@ -226,6 +254,17 @@ export async function createJumpServerExecStream(connectionId: string): Promise<
       jumpserverExecStreams.set(connectionId, execStream)
 
       execStream.on('close', () => {
+        logger.debug('JumpServer exec stream closed', { event: 'jumpserver.exec.stream.close', connectionId })
+        jumpserverExecStreams.delete(connectionId)
+        deleteExecStreamPromise(connectionId)
+      })
+
+      execStream.on('error', (error: Error) => {
+        logger.warn('JumpServer exec stream error', {
+          event: 'jumpserver.exec.stream.error',
+          connectionId,
+          errorMessage: error.message
+        })
         jumpserverExecStreams.delete(connectionId)
         deleteExecStreamPromise(connectionId)
       })
@@ -244,20 +283,36 @@ export async function createJumpServerExecStream(connectionId: string): Promise<
 
 export async function executeCommandOnJumpServerExec(
   execStream: any,
-  cmd: string
-): Promise<{
-  success: boolean
-  stdout?: string
-  stderr?: string
-  exitCode?: number
-  error?: string
-}> {
+  cmd: string,
+  options: JumpServerExecOptions = {}
+): Promise<JumpServerExecCommandResult> {
   return new Promise((resolve) => {
     const { marker, exitCodeMarker } = OutputParser.generateMarkers()
 
     let outputBuffer = ''
     let timeoutHandle: NodeJS.Timeout
+    let settleTimer: NodeJS.Timeout | null = null
     let commandSent = false
+    let settled = false
+    const startedAt = Date.now()
+    const timeoutMs = options.timeoutMs || JUMPSERVER_CONSTANTS.COMMAND_EXEC_TIMEOUT
+
+    const finish = (result: JumpServerExecCommandResult) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      logger.debug('JumpServer command finished', {
+        event: 'jumpserver.exec.finish',
+        connectionId: options.connectionId,
+        kind: options.kind,
+        success: result.success,
+        exitCode: result.exitCode,
+        durationMs: Date.now() - startedAt,
+        stdoutLength: result.stdout?.length || 0,
+        errorMessage: result.error
+      })
+      resolve(result)
+    }
 
     const dataHandler = (data: Buffer) => {
       if (!commandSent) return
@@ -269,9 +324,7 @@ export async function executeCommandOnJumpServerExec(
       const hasExitCode = new RegExp(`${exitCodeMarker}\\d+`).test(outputBuffer)
 
       if (hasMarker && hasExitCode) {
-        setTimeout(() => {
-          cleanup()
-
+        settleTimer = setTimeout(() => {
           try {
             const markerPattern = new RegExp(`[\\r\\n]${marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\r\\n]`)
             const markerMatch = outputBuffer.match(markerPattern)
@@ -284,7 +337,7 @@ export async function executeCommandOnJumpServerExec(
             const stdout = OutputParser.cleanCommandOutput(rawOutput)
             const exitCode = OutputParser.extractExitCode(outputBuffer, exitCodeMarker)
 
-            resolve({
+            finish({
               success: exitCode === 0,
               stdout,
               stderr: '',
@@ -293,9 +346,11 @@ export async function executeCommandOnJumpServerExec(
           } catch (parseError) {
             logger.error('Command output parsing error', {
               event: 'jumpserver.exec.parse.error',
+              connectionId: options.connectionId,
+              kind: options.kind,
               error: parseError
             })
-            resolve({
+            finish({
               success: false,
               error: `Failed to parse command output: ${parseError}`,
               stdout: outputBuffer,
@@ -307,24 +362,64 @@ export async function executeCommandOnJumpServerExec(
       }
     }
 
-    const cleanup = () => {
+    const errorHandler = (error: Error) => {
+      logger.warn('JumpServer command stream error', {
+        event: 'jumpserver.exec.error',
+        connectionId: options.connectionId,
+        kind: options.kind,
+        errorMessage: error.message
+      })
+      finish({
+        success: false,
+        error: error.message || 'JumpServer exec stream error',
+        stdout: outputBuffer,
+        stderr: '',
+        exitCode: undefined
+      })
+    }
+
+    const closeHandler = () => {
+      finish({
+        success: false,
+        error: 'JumpServer exec stream closed',
+        stdout: outputBuffer,
+        stderr: '',
+        exitCode: undefined
+      })
+    }
+
+    function cleanup() {
       execStream.removeListener('data', dataHandler)
+      execStream.removeListener('error', errorHandler)
+      execStream.removeListener('close', closeHandler)
       clearTimeout(timeoutHandle)
+      if (settleTimer) {
+        clearTimeout(settleTimer)
+        settleTimer = null
+      }
     }
 
     timeoutHandle = setTimeout(() => {
-      logger.warn('Command execution timeout', { event: 'jumpserver.exec.timeout', timeoutMs: JUMPSERVER_CONSTANTS.COMMAND_EXEC_TIMEOUT })
-      cleanup()
-      resolve({
+      logger.warn('Command execution timeout', {
+        event: 'jumpserver.exec.timeout',
+        connectionId: options.connectionId,
+        kind: options.kind,
+        timeoutMs,
+        durationMs: Date.now() - startedAt,
+        commandLength: cmd.length
+      })
+      finish({
         success: false,
         error: 'Command execution timeout',
         stdout: outputBuffer,
         stderr: '',
         exitCode: undefined
       })
-    }, JUMPSERVER_CONSTANTS.COMMAND_EXEC_TIMEOUT)
+    }, timeoutMs)
 
     execStream.on('data', dataHandler)
+    execStream.once('error', errorHandler)
+    execStream.once('close', closeHandler)
 
     // Leading space prevents the command from being recorded in shell history
     const fullCommand = ` ${cmd}; echo "${marker}"; echo "${exitCodeMarker}$?"\r`
@@ -334,4 +429,86 @@ export async function executeCommandOnJumpServerExec(
       commandSent = true
     }, JUMPSERVER_CONSTANTS.DATA_COLLECTION_DELAY)
   })
+}
+
+export async function executeCommandOnJumpServerExecQueued(
+  connectionId: string,
+  cmd: string,
+  options: Omit<JumpServerExecOptions, 'connectionId'> = {}
+): Promise<JumpServerExecCommandResult> {
+  const previousTail = getExecQueueTail(connectionId) || Promise.resolve()
+  const queueDepth = incrementExecQueueDepth(connectionId)
+  const queuedAt = Date.now()
+
+  const current = previousTail
+    .catch(() => undefined)
+    .then(async () => {
+      const startedAt = Date.now()
+      logger.debug('JumpServer command dequeued', {
+        event: 'jumpserver.exec.queue.start',
+        connectionId,
+        kind: options.kind,
+        queueDepth,
+        queuedMs: startedAt - queuedAt,
+        timeoutMs: options.timeoutMs || JUMPSERVER_CONSTANTS.COMMAND_EXEC_TIMEOUT,
+        commandLength: cmd.length
+      })
+
+      let execStream: any
+      try {
+        execStream = await createJumpServerExecStream(connectionId)
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        logger.warn('JumpServer queued command could not create exec stream', {
+          event: 'jumpserver.exec.queue.stream.error',
+          connectionId,
+          kind: options.kind,
+          errorMessage,
+          durationMs: Date.now() - startedAt
+        })
+        return {
+          success: false,
+          stdout: '',
+          stderr: '',
+          exitCode: undefined,
+          error: `Failed to create exec stream: ${errorMessage}`
+        }
+      }
+
+      const result = await executeCommandOnJumpServerExec(execStream, cmd, {
+        ...options,
+        connectionId
+      })
+
+      logger.debug('JumpServer command queue completed', {
+        event: 'jumpserver.exec.queue.complete',
+        connectionId,
+        kind: options.kind,
+        success: result.success,
+        durationMs: Date.now() - startedAt,
+        queueDepth: getExecQueueDepth(connectionId),
+        stdoutLength: result.stdout?.length || 0,
+        errorMessage: result.error
+      })
+      return result
+    })
+
+  const tail = current.then(
+    () => undefined,
+    () => undefined
+  )
+  setExecQueueTail(connectionId, tail)
+
+  return current.finally(() => {
+    const remainingDepth = decrementExecQueueDepth(connectionId)
+    if (getExecQueueTail(connectionId) === tail && remainingDepth === 0) {
+      deleteExecQueueTail(connectionId)
+    }
+  })
+}
+
+export function clearJumpServerExecState(connectionId: string) {
+  jumpserverExecStreams.delete(connectionId)
+  deleteExecStreamPromise(connectionId)
+  clearExecQueueState(connectionId)
 }

@@ -20,7 +20,13 @@ export {
   jumpserverSessionPids
 } from './jumpserver/state'
 
-export { navigateToJumpServerAsset, createJumpServerExecStream, executeCommandOnJumpServerExec } from './jumpserver/streamManager'
+export {
+  navigateToJumpServerAsset,
+  createJumpServerExecStream,
+  executeCommandOnJumpServerExec,
+  executeCommandOnJumpServerExecQueued,
+  clearJumpServerExecState
+} from './jumpserver/streamManager'
 
 export { handleJumpServerConnection, registerJumpServerHandlers } from './jumpserver/connectionManager'
 

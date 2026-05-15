@@ -189,6 +189,8 @@ const setupHandlers = async () => {
     jumpserverLastCommand: new Map(),
     createJumpServerExecStream: vi.fn(),
     executeCommandOnJumpServerExec: vi.fn(),
+    executeCommandOnJumpServerExecQueued: vi.fn(),
+    clearJumpServerExecState: vi.fn(),
     jumpserverSessionPids: new Map()
   }))
 
