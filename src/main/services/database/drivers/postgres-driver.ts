@@ -10,6 +10,7 @@ type PgClient = {
   connect(): Promise<void>
   query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[]; fields?: Array<{ name: string }> }>
   end(): Promise<void>
+  on?(event: 'error', listener: (error: Error & { code?: string }) => void): PgClient
 }
 
 type PgDriver = {
@@ -57,6 +58,26 @@ function describeConfigForLog(config: Record<string, unknown>): Record<string, u
   }
 }
 
+const pgClientAsyncErrors = new WeakMap<PgClient, Error>()
+
+function attachPgClientErrorHandler(client: PgClient, context: string): void {
+  if (typeof client.on !== 'function') return
+  client.on('error', (error: Error & { code?: string }) => {
+    pgClientAsyncErrors.set(client, error)
+    logger.warn('postgres client emitted async error', {
+      event: 'db.postgres.client.error',
+      context,
+      errorCode: error.code,
+      errorMessage: error.message
+    })
+  })
+}
+
+function assertPgClientUsable(client: PgClient): void {
+  const error = pgClientAsyncErrors.get(client)
+  if (error) throw error
+}
+
 export class PostgresDriverAdapter implements DatabaseDriverAdapter {
   async testConnection(input: ResolvedDbCredential): Promise<ConnectionTestResult> {
     const start = Date.now()
@@ -70,7 +91,9 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
     try {
       const driver = await loadDriver()
       client = new driver.Client(config)
+      attachPgClientErrorHandler(client, 'testConnection')
       await client.connect()
+      assertPgClientUsable(client)
       const res = await client.query<{ version: string }>('SELECT version() as version')
       const version = res.rows?.[0]?.version
       const latencyMs = Date.now() - start
@@ -103,7 +126,9 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
       pgOptionsEnv: process.env.PGOPTIONS ? 'SET' : 'UNSET'
     })
     const client = new driver.Client(config)
+    attachPgClientErrorHandler(client, 'connect')
     await client.connect()
+    assertPgClientUsable(client)
     return client
   }
 
@@ -123,6 +148,7 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
   async listDatabases(handle: unknown): Promise<string[]> {
     const client = handle as PgClient
     try {
+      assertPgClientUsable(client)
       const res = await client.query<{ datname: string }>('SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname')
       const names = res.rows.map((r) => r.datname)
       logger.info('postgres listDatabases ok', {
@@ -142,6 +168,7 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
     void databaseName
     const schema = schemaName ?? 'public'
     try {
+      assertPgClientUsable(client)
       const res = await client.query<{ table_name: string }>(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name",
         [schema]
@@ -177,6 +204,7 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
     const client = handle as PgClient
     void databaseName
     try {
+      assertPgClientUsable(client)
       const res = await client.query<{ schema_name: string }>(
         'SELECT schema_name FROM information_schema.schemata ' +
           "WHERE schema_name NOT LIKE 'pg_toast%' AND schema_name NOT LIKE 'pg_temp_%' " +
@@ -209,6 +237,7 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
     const client = handle as PgClient
     void databaseName
     try {
+      assertPgClientUsable(client)
       let sql: string
       let params: unknown[]
       switch (kind) {
@@ -263,6 +292,7 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
     void databaseName
     const schema = schemaName ?? 'public'
     try {
+      assertPgClientUsable(client)
       const res = await client.query<{ column_name: string }>(
         'SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position',
         [schema, tableName]
@@ -313,6 +343,7 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
   async detectPrimaryKey(handle: unknown, databaseName: string, tableName: string, schemaName?: string): Promise<string[] | null> {
     void databaseName
     const client = handle as PgClient
+    assertPgClientUsable(client)
     // Quote identifiers before concatenating into the regclass cast so that
     // mixed-case or reserved-word schema/table names resolve correctly.
     const qt = this.quoteIdentifier.bind(this)
@@ -336,21 +367,25 @@ export class PostgresDriverAdapter implements DatabaseDriverAdapter {
 
   async beginTransaction(handle: unknown): Promise<void> {
     const client = handle as PgClient
+    assertPgClientUsable(client)
     await client.query('BEGIN')
   }
 
   async commitTransaction(handle: unknown): Promise<void> {
     const client = handle as PgClient
+    assertPgClientUsable(client)
     await client.query('COMMIT')
   }
 
   async rollbackTransaction(handle: unknown): Promise<void> {
     const client = handle as PgClient
+    assertPgClientUsable(client)
     await client.query('ROLLBACK')
   }
 
   async executeQuery(handle: unknown, sql: string, params: unknown[] = []): Promise<QueryResult> {
     const client = handle as PgClient
+    assertPgClientUsable(client)
     const start = Date.now()
     const res = await client.query<Record<string, unknown>>(sql, params)
     const durationMs = Date.now() - start
@@ -392,6 +427,7 @@ function isPermissionError(err: unknown): boolean {
  */
 export async function fetchPostgresTableDdl(handle: unknown, databaseName: string, schemaName: string, tableName: string): Promise<string> {
   const client = handle as PgClient
+  assertPgClientUsable(client)
   void databaseName
   const safeSchema = String(schemaName).replace(/"/g, '""')
 

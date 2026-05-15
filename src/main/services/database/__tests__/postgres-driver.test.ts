@@ -4,6 +4,61 @@ vi.mock('@logging/index', () => ({
   createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() }))
 }))
 
+const pgMock = vi.hoisted(() => ({
+  clients: [] as Array<{
+    emit(event: string, ...args: unknown[]): boolean
+    listenerCount(event: string): number
+    queryCalls: number
+  }>
+}))
+
+vi.mock('pg', () => {
+  class MockClient {
+    private readonly listeners = new Map<string, Array<(...args: unknown[]) => void>>()
+    queryCalls = 0
+
+    constructor(_config: Record<string, unknown>) {
+      pgMock.clients.push(this)
+    }
+
+    on(event: string, listener: (...args: unknown[]) => void): this {
+      const listeners = this.listeners.get(event) ?? []
+      listeners.push(listener)
+      this.listeners.set(event, listeners)
+      return this
+    }
+
+    emit(event: string, ...args: unknown[]): boolean {
+      const listeners = this.listeners.get(event) ?? []
+      if (event === 'error' && listeners.length === 0) {
+        const [error] = args
+        throw error instanceof Error ? error : new Error(String(error))
+      }
+      for (const listener of listeners) listener(...args)
+      return listeners.length > 0
+    }
+
+    listenerCount(event: string): number {
+      return this.listeners.get(event)?.length ?? 0
+    }
+
+    async connect() {
+      // no-op for tests
+    }
+
+    async query() {
+      this.queryCalls += 1
+      return { rows: [] }
+    }
+
+    async end() {
+      // no-op for tests
+    }
+  }
+
+  return { Client: MockClient }
+})
+
 const { PostgresDriverAdapter, fetchPostgresTableDdl } = await import('../drivers/postgres-driver')
 const { PG_TABLE_DEF_FUNCTION_SQL } = await import('../ddl/pg-table-ddl')
 
@@ -102,6 +157,29 @@ describe('PostgresDriverAdapter - transactions', () => {
     await adapter.commitTransaction(client)
     await adapter.rollbackTransaction(client)
     expect(calls.map((c) => c.sql)).toEqual(['BEGIN', 'COMMIT', 'ROLLBACK'])
+  })
+})
+
+describe('PostgresDriverAdapter - connection errors', () => {
+  it('handles pg idle socket errors without throwing uncaught error events', async () => {
+    pgMock.clients.length = 0
+    const adapter = new PostgresDriverAdapter()
+    const handle = await adapter.connect({
+      dbType: 'postgresql',
+      host: 'localhost',
+      port: 5432,
+      username: 'user',
+      password: null,
+      database: 'postgres',
+      sslMode: null
+    })
+    const client = pgMock.clients[0]
+    const error = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })
+
+    expect(client.listenerCount('error')).toBeGreaterThan(0)
+    expect(() => client.emit('error', error)).not.toThrow()
+    await expect(adapter.listDatabases(handle)).rejects.toThrow('read ECONNRESET')
+    expect(client.queryCalls).toBe(0)
   })
 })
 
