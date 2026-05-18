@@ -1785,6 +1785,8 @@ export default {
       statusError: '錯誤',
       statusCancelled: '已取消',
       diagnosing: 'AI 分析中...',
+      diagnoseInProgress: 'AI 診斷正在進行中',
+      diagnoseSqlChanged: '診斷開始後 SQL 已被修改。請重新執行 AI 修復，避免覆蓋編輯內容。',
       diagnosedAndReplaced: 'SQL 已修復並替換',
       actionExplain: '解釋',
       actionNl2Sql: '自然語言轉 SQL',

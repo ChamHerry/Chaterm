@@ -1780,6 +1780,8 @@ export default {
       statusError: 'خطأ',
       statusCancelled: 'ملغى',
       diagnosing: 'جارٍ التحليل بالذكاء الاصطناعي...',
+      diagnoseInProgress: 'تشخيص الذكاء الاصطناعي قيد التشغيل بالفعل',
+      diagnoseSqlChanged: 'تغيّر SQL بعد بدء التشخيص. شغّل إصلاح الذكاء الاصطناعي مرة أخرى لتجنب استبدال التعديلات.',
       diagnosedAndReplaced: 'تم إصلاح SQL واستبداله',
       actionExplain: 'شرح',
       actionNl2Sql: 'NL إلى SQL',

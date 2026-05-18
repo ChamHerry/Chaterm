@@ -1791,6 +1791,8 @@ export default {
       statusError: '오류',
       statusCancelled: '취소됨',
       diagnosing: 'AI 분석 중...',
+      diagnoseInProgress: 'AI 진단이 이미 실행 중입니다',
+      diagnoseSqlChanged: '진단 시작 후 SQL이 변경되었습니다. 편집 내용을 덮어쓰지 않도록 AI 수정을 다시 실행하세요.',
       diagnosedAndReplaced: 'SQL이 수정되어 교체되었습니다',
       actionExplain: '설명',
       actionNl2Sql: '자연어 → SQL',

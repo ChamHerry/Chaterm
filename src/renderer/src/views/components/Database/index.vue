@@ -133,9 +133,9 @@
                 :tab="activeTab"
                 :tree="store.tree"
                 :connection-statuses="store.connectionStatuses"
-                :diagnosing="isDiagnosing"
-                :diagnose-error="diagnoseError"
-                :diagnose-success="diagnoseSuccess"
+                :diagnosing="activeDiagnoseLoading"
+                :diagnose-error="activeDiagnoseError"
+                :diagnose-success="activeDiagnoseSuccess"
                 @update-sql="(v) => updateSql(v)"
                 @update-context="(a, d) => store.setSqlTabContext(activeTab!.id, a, d)"
                 @update-schema="(s) => store.setSqlTabSchema(activeTab!.id, s)"
@@ -448,32 +448,86 @@ const handleCloseAiPane = () => {
 const isDiagnosing = ref(false)
 const diagnoseError = ref<string | null>(null)
 const diagnoseSuccess = ref(false)
+const diagnosingTabId = ref<string | null>(null)
+const diagnoseFeedbackTabId = ref<string | null>(null)
+
+interface DiagnoseRequestMeta {
+  tabId: string
+  sourceSql: string
+}
+
+// Track in-flight diagnose reqIds so the onDone handler can intercept them
+// and replace the originating SQL tab directly, without opening the Drawer.
+const diagnoseRequests = new Map<string, DiagnoseRequestMeta>()
+
+const activeDiagnoseLoading = computed(() => isDiagnosing.value && activeTab.value?.id === diagnosingTabId.value)
+const activeDiagnoseError = computed(() => (activeTab.value?.id === diagnoseFeedbackTabId.value ? diagnoseError.value : null))
+const activeDiagnoseSuccess = computed(() => diagnoseSuccess.value && activeTab.value?.id === diagnoseFeedbackTabId.value)
+
+let diagnoseSuccessTimer: ReturnType<typeof setTimeout> | null = null
+
+const resetDiagnoseSuccess = () => {
+  if (diagnoseSuccessTimer) {
+    clearTimeout(diagnoseSuccessTimer)
+    diagnoseSuccessTimer = null
+  }
+  diagnoseSuccess.value = false
+}
+
+const showDiagnoseSuccess = () => {
+  resetDiagnoseSuccess()
+  diagnoseSuccess.value = true
+  diagnoseSuccessTimer = setTimeout(() => {
+    diagnoseSuccess.value = false
+    diagnoseSuccessTimer = null
+  }, 30000)
+}
+
+const clearDiagnoseRequest = (reqId: string) => {
+  diagnoseRequests.delete(reqId)
+  isDiagnosing.value = false
+  diagnosingTabId.value = null
+}
 
 const handleDiagnose = async (sql: string, error: string) => {
+  const sourceTab = activeTab.value
+  if (!sourceTab || sourceTab.kind !== 'sql') return
+  if (isDiagnosing.value) {
+    diagnoseFeedbackTabId.value = sourceTab.id
+    diagnoseError.value = t('database.dbAi.diagnoseInProgress')
+    return
+  }
   const ctx = store.getActiveDbAiContext()
   if (!ctx) {
+    diagnoseFeedbackTabId.value = sourceTab.id
     diagnoseError.value = t('database.dbAi.contextRequired')
     return
   }
   const reqId = `dbai-diag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  diagnoseReqIds.add(reqId)
+  diagnoseRequests.set(reqId, { tabId: sourceTab.id, sourceSql: sql })
   isDiagnosing.value = true
+  diagnosingTabId.value = sourceTab.id
+  diagnoseFeedbackTabId.value = sourceTab.id
   diagnoseError.value = null
+  resetDiagnoseSuccess()
   const anyGlobal = globalThis as unknown as {
     window?: { api?: { dbAi?: { start?: (req: unknown) => Promise<{ ok: boolean; errorMessage?: string }> } } }
   }
   const startFn = anyGlobal.window?.api?.dbAi?.start
   if (typeof startFn !== 'function') {
-    diagnoseReqIds.delete(reqId)
-    isDiagnosing.value = false
+    clearDiagnoseRequest(reqId)
     diagnoseError.value = t('database.dbAi.unknownError')
     return
   }
-  const result = await startFn({ reqId, action: 'diagnose', context: ctx, input: { sql, errorMessage: error } })
-  if (!result.ok) {
-    diagnoseReqIds.delete(reqId)
-    isDiagnosing.value = false
-    diagnoseError.value = result.errorMessage ?? t('database.dbAi.unknownError')
+  try {
+    const result = await startFn({ reqId, action: 'diagnose', context: ctx, input: { sql, errorMessage: error } })
+    if (!result.ok) {
+      clearDiagnoseRequest(reqId)
+      diagnoseError.value = result.errorMessage ?? t('database.dbAi.unknownError')
+    }
+  } catch (err) {
+    clearDiagnoseRequest(reqId)
+    diagnoseError.value = err instanceof Error ? err.message : t('database.dbAi.unknownError')
   }
 }
 
@@ -571,15 +625,26 @@ onBeforeUnmount(() => {
     }
   }
   dbAiUnsubs.length = 0
+  resetDiagnoseSuccess()
   resizeObserver?.disconnect()
   resizeObserver = null
 })
 
 const dbAiUnsubs: Array<() => void> = []
 
-// Track in-flight diagnose reqIds so the onDone handler can intercept them
-// and replace the editor SQL directly, without opening the Drawer.
-const diagnoseReqIds = new Set<string>()
+type ApplyDiagnoseSqlResult = 'applied' | 'stale-source' | 'missing-tab'
+
+const applyDiagnoseSql = (meta: DiagnoseRequestMeta, sql: string): ApplyDiagnoseSqlResult => {
+  const tab = store.tabs.find((item) => item.id === meta.tabId)
+  if (!tab || tab.kind !== 'sql') return 'missing-tab'
+  if ((tab.sql ?? '') !== meta.sourceSql) return 'stale-source'
+  if (store.activeTabId === meta.tabId && sqlWorkspaceRef.value) {
+    sqlWorkspaceRef.value.replaceEditorAll(sql)
+  } else {
+    tab.sql = sql
+  }
+  return 'applied'
+}
 
 /**
  * Wire the store to the DB-AI IPC event stream. Subscriptions are disposed
@@ -606,7 +671,7 @@ function subscribeDbAiEvents() {
   if (typeof dbAi.onStream === 'function') {
     dbAiUnsubs.push(
       dbAi.onStream((ev) => {
-        if (diagnoseReqIds.has(ev.reqId)) return
+        if (diagnoseRequests.has(ev.reqId)) return
         store.appendDbAiStream({
           reqId: ev.reqId,
           action: ev.action as Parameters<typeof store.appendDbAiStream>[0]['action'],
@@ -619,18 +684,24 @@ function subscribeDbAiEvents() {
   if (typeof dbAi.onDone === 'function') {
     dbAiUnsubs.push(
       dbAi.onDone((ev) => {
-        if (diagnoseReqIds.has(ev.reqId)) {
-          diagnoseReqIds.delete(ev.reqId)
-          isDiagnosing.value = false
+        const diagnoseMeta = diagnoseRequests.get(ev.reqId)
+        if (diagnoseMeta) {
+          clearDiagnoseRequest(ev.reqId)
+          diagnoseFeedbackTabId.value = diagnoseMeta.tabId
           if (ev.ok && ev.result?.sql) {
-            sqlWorkspaceRef.value?.replaceEditorAll(ev.result.sql)
-            diagnoseError.value = null
-            diagnoseSuccess.value = true
-            setTimeout(() => {
-              diagnoseSuccess.value = false
-            }, 30000)
+            const applyResult = applyDiagnoseSql(diagnoseMeta, ev.result.sql)
+            if (applyResult === 'applied') {
+              diagnoseError.value = null
+              showDiagnoseSuccess()
+            } else if (applyResult === 'stale-source') {
+              diagnoseError.value = t('database.dbAi.diagnoseSqlChanged')
+            } else {
+              diagnoseError.value = t('database.dbAi.unknownError')
+            }
           } else if (!ev.ok) {
             diagnoseError.value = ev.errorMessage ?? t('database.dbAi.unknownError')
+          } else {
+            diagnoseError.value = t('database.dbAi.unknownError')
           }
           return
         }

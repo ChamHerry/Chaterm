@@ -1874,6 +1874,8 @@ export default {
       statusError: 'Error',
       statusCancelled: 'Cancelled',
       diagnosing: 'Analyzing with AI...',
+      diagnoseInProgress: 'AI diagnosis is already running',
+      diagnoseSqlChanged: 'SQL changed after diagnosis started. Run AI Fix again to avoid overwriting edits.',
       diagnosedAndReplaced: 'SQL fixed and replaced',
       actionExplain: 'Explain',
       actionNl2Sql: 'NL to SQL',

@@ -1820,6 +1820,8 @@ export default {
       statusError: 'Ошибка',
       statusCancelled: 'Отменено',
       diagnosing: 'ИИ анализирует...',
+      diagnoseInProgress: 'Диагностика ИИ уже выполняется',
+      diagnoseSqlChanged: 'SQL изменился после запуска диагностики. Запустите исправление ИИ ещё раз, чтобы не перезаписать правки.',
       diagnosedAndReplaced: 'SQL исправлен и заменён',
       actionExplain: 'Объяснить',
       actionNl2Sql: 'NL в SQL',

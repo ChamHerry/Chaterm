@@ -19,6 +19,8 @@ import { extractFirstSqlBlock } from './sql-markdown'
 const logger = createLogger('db-ai')
 
 const CANCELLED = new Set<string>()
+const DIAGNOSE_TABLE_LIST_MAX_ITEMS = 200
+const DIAGNOSE_TABLE_LIST_MAX_CHARS = 8 * 1024
 
 function markCancelled(reqId: string): void {
   CANCELLED.add(reqId)
@@ -30,6 +32,27 @@ function isCancelled(reqId: string): boolean {
 
 function forgetCancellation(reqId: string): void {
   CANCELLED.delete(reqId)
+}
+
+function buildDiagnoseTableListSection(tableList: string[]): string {
+  const normalized = tableList.map((name) => String(name).replace(/\s+/g, ' ').trim()).filter(Boolean)
+  if (normalized.length === 0) return ''
+
+  const visible: string[] = []
+  let charCount = 0
+  for (const tableName of normalized) {
+    const nextChars = (visible.length > 0 ? 2 : 0) + tableName.length
+    if (visible.length >= DIAGNOSE_TABLE_LIST_MAX_ITEMS || charCount + nextChars > DIAGNOSE_TABLE_LIST_MAX_CHARS) {
+      break
+    }
+    visible.push(tableName)
+    charCount += nextChars
+  }
+
+  if (visible.length === 0) return ''
+  const omitted = normalized.length - visible.length
+  const omittedNote = omitted > 0 ? `\n(${omitted} additional tables omitted.)` : ''
+  return `\n\nAVAILABLE TABLES IN CURRENT DATABASE:\n${visible.join(', ')}${omittedNote}`
 }
 
 /**
@@ -47,7 +70,7 @@ function buildDiagnosePrompt(
 ): { systemPrompt: string; userMessage: string } {
   const schemaSection = schemaBlock ? `\n\nSCHEMA CONTEXT (resolved from your SQL):\n${schemaBlock}` : ''
 
-  const tableListSection = tableList.length > 0 ? `\n\nAVAILABLE TABLES IN CURRENT DATABASE:\n${tableList.join(', ')}` : ''
+  const tableListSection = buildDiagnoseTableListSection(tableList)
 
   const systemPrompt = `You are Chaterm DB-AI, a database assistant specialised in diagnosing and fixing SQL errors. You are working with a ${dbType} database.
 
@@ -193,6 +216,11 @@ export function createDbAiService(): DbAiService {
       logger.info('db-ai cancel requested', { event: 'db-ai.cancel', reqId })
     }
   }
+}
+
+export const __testing = {
+  buildDiagnosePrompt,
+  buildDiagnoseTableListSection
 }
 
 // Re-exports used by task #5 (IPC handler) so the handler can depend on a

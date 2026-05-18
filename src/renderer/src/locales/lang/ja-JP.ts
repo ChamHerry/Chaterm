@@ -1799,6 +1799,8 @@ export default {
       statusError: 'エラー',
       statusCancelled: 'キャンセル済み',
       diagnosing: 'AI が分析中...',
+      diagnoseInProgress: 'AI 診断はすでに実行中です',
+      diagnoseSqlChanged: '診断開始後に SQL が変更されました。編集内容を上書きしないよう、AI 修正を再実行してください。',
       diagnosedAndReplaced: 'SQL を修正して置き換えました',
       actionExplain: '説明',
       actionNl2Sql: '自然言語 → SQL',

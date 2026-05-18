@@ -56,8 +56,7 @@ describe('native OpenAI-style tool call stream accumulator', () => {
         input: {
           ip: '10.0.0.1',
           command: 'awk "{print $1}" /var/log/app.log',
-          requires_approval: true,
-          interactive: false
+          requires_approval: true
         },
         rawArguments: '{"ip":"10.0.0.1","command":"awk "{print $1}" /var/log/app.log","requires_approval":false,"interactive":false}',
         provider: 'openai'

@@ -118,8 +118,11 @@ function repairNativeToolArguments(raw: string, toolName?: string): Record<strin
   // Repaired command arguments are best-effort recovery from malformed JSON.
   // Keep execution behind explicit approval even if the malformed payload tried
   // to mark the command as safe.
-  repaired.requires_approval = true
-  return repaired
+  return {
+    ip: repaired.ip,
+    command: repaired.command,
+    requires_approval: true
+  }
 }
 
 function parseLooseFlatJsonObject(raw: string, expectedKeys: readonly string[]): Record<string, unknown> | undefined {

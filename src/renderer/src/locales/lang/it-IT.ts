@@ -1825,6 +1825,8 @@ export default {
       statusError: 'Errore',
       statusCancelled: 'Annullato',
       diagnosing: 'Analisi IA in corso...',
+      diagnoseInProgress: 'La diagnosi IA è già in corso',
+      diagnoseSqlChanged: "SQL modificato dopo l'avvio della diagnosi. Esegui di nuovo la correzione IA per evitare di sovrascrivere le modifiche.",
       diagnosedAndReplaced: 'SQL corretto e sostituito',
       actionExplain: 'Spiega',
       actionNl2Sql: 'NL in SQL',

@@ -30,7 +30,7 @@ const logger = createLogger('db-ai')
 // Payload limits (kept locally so validation is self-contained).
 // ---------------------------------------------------------------------------
 
-/** Maximum SQL / question / selectedText size (50 KB, matches §10.2). */
+/** Maximum SQL / question / selectedText / errorMessage size (50 KB, matches §10.2). */
 const MAX_TEXT_BYTES = 50 * 1024
 /** Maximum number of hinted tables the renderer may attach. */
 const MAX_HINTED_TABLES = 64
@@ -110,7 +110,7 @@ function validateRequest(raw: unknown): { ok: true; req: DbAiStartRequest } | { 
   const inputRaw = r.input && typeof r.input === 'object' ? (r.input as Record<string, unknown>) : {}
   // Enforce text-field size limits individually so the renderer gets a
   // precise error code for the oversized field.
-  for (const field of ['sql', 'question', 'selectedText'] as const) {
+  for (const field of ['sql', 'question', 'selectedText', 'errorMessage'] as const) {
     const v = inputRaw[field]
     if (v !== undefined && (typeof v !== 'string' || byteLen(v) > MAX_TEXT_BYTES)) {
       return { ok: false, errorMessage: `input.${field} too large or invalid` }

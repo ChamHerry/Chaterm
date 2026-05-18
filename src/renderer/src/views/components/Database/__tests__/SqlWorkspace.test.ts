@@ -1,9 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import DatabaseWorkspace from '../index.vue'
 import { useDatabaseWorkspaceStore } from '@/store/databaseWorkspaceStore'
+
+vi.hoisted(() => {
+  const values = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear()
+    }
+  })
+})
 
 // markdownRenderer imports monaco-editor/esm/vs/editor/editor.all.js which calls
 // document.queryCommandSupported — not available in jsdom. Stub it out entirely.
@@ -26,6 +39,9 @@ vi.mock('../components/SqlMonacoEditor.vue', async () => {
           getSelectedText: () => '',
           getTextUntilCursor: () => getText(),
           getCurrentStatement: () => getText(),
+          insertAtCursor: (text: string) => emit('update:modelValue', `${getText()}${text}`),
+          replaceSelection: (text: string) => emit('update:modelValue', text),
+          replaceAll: (text: string) => emit('update:modelValue', text),
           focus: () => {}
         })
         return () =>
@@ -229,6 +245,117 @@ describe('SqlWorkspace integration', () => {
     const errorEl = wrapper.find('.sql-workspace__status--error')
     expect(errorEl.exists()).toBe(true)
     expect(errorEl.text()).toContain('boom')
+  })
+
+  const baseDbAsset = {
+    id: 'a1',
+    name: 'conn-1',
+    group_id: null,
+    group_name: null,
+    db_type: 'postgresql' as const,
+    host: '10.0.0.1',
+    port: 5432,
+    database_name: 'db1',
+    schema_name: 'public',
+    environment: 'Dev',
+    ssl_mode: null,
+    username: 'root',
+    hasPassword: true,
+    status: 'connected' as const
+  }
+
+  const seedErroredSqlResult = () => {
+    const store = useDatabaseWorkspaceStore()
+    store.openNewSqlTab()
+    const tab = store.activeTab!
+    store.setSqlTabContext(tab.id, 'a1', 'db1')
+    tab.sql = 'select * from missing_table'
+    tab.resultTabs = [
+      {
+        id: 'res-error',
+        seq: 1,
+        idx: 1,
+        title: '#1-1 select bad',
+        sql: 'select * from missing_table',
+        status: 'error',
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        durationMs: 1,
+        error: 'relation missing_table does not exist',
+        startedAt: Date.now()
+      }
+    ]
+    tab.activeResultTabId = 'res-error'
+    return { store, tab }
+  }
+
+  it('applies diagnose SQL to the originating tab when the source SQL is unchanged', async () => {
+    let doneCb: ((ev: { reqId: string; action: string; ok: boolean; result?: { sql?: string } }) => void) | undefined
+    let startedReq: { reqId: string } | undefined
+    const start = vi.fn(async (req: unknown) => {
+      startedReq = req as { reqId: string }
+      return { ok: true, reqId: startedReq.reqId }
+    })
+    ;(window as unknown as { api: Record<string, unknown> }).api = {
+      dbAssetList: vi.fn(async () => [baseDbAsset]),
+      dbAssetExecuteQuery: vi.fn(),
+      dbAi: {
+        start,
+        onStream: vi.fn(() => () => {}),
+        onDone: vi.fn((cb: typeof doneCb) => {
+          doneCb = cb
+          return () => {}
+        })
+      }
+    }
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    const { tab } = seedErroredSqlResult()
+    await nextTick()
+
+    await wrapper.find('.sql-workspace__ai-fix-btn').trigger('click')
+    await flushPromises()
+    doneCb?.({ reqId: startedReq!.reqId, action: 'diagnose', ok: true, result: { sql: 'select * from existing_table' } })
+    await nextTick()
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(tab.sql).toBe('select * from existing_table')
+  })
+
+  it('does not overwrite SQL edited after diagnose starts', async () => {
+    let doneCb: ((ev: { reqId: string; action: string; ok: boolean; result?: { sql?: string } }) => void) | undefined
+    let startedReq: { reqId: string } | undefined
+    const start = vi.fn(async (req: unknown) => {
+      startedReq = req as { reqId: string }
+      return { ok: true, reqId: startedReq.reqId }
+    })
+    ;(window as unknown as { api: Record<string, unknown> }).api = {
+      dbAssetList: vi.fn(async () => [baseDbAsset]),
+      dbAssetExecuteQuery: vi.fn(),
+      dbAi: {
+        start,
+        onStream: vi.fn(() => () => {}),
+        onDone: vi.fn((cb: typeof doneCb) => {
+          doneCb = cb
+          return () => {}
+        })
+      }
+    }
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    const { tab } = seedErroredSqlResult()
+    await nextTick()
+
+    await wrapper.find('.sql-workspace__ai-fix-btn').trigger('click')
+    await flushPromises()
+    tab.sql = 'select * from user_edited_table'
+    doneCb?.({ reqId: startedReq!.reqId, action: 'diagnose', ok: true, result: { sql: 'select * from existing_table' } })
+    await nextTick()
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(tab.sql).toBe('select * from user_edited_table')
+    expect(wrapper.find('.sql-workspace__diagnose-error').text()).toContain('database.dbAi.diagnoseSqlChanged')
   })
 
   // -- Client-side pagination / sort / filter in the result grid ------------

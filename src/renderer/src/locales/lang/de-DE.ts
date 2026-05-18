@@ -1813,6 +1813,9 @@ export default {
       statusError: 'Fehler',
       statusCancelled: 'Abgebrochen',
       diagnosing: 'KI analysiert...',
+      diagnoseInProgress: 'KI-Diagnose läuft bereits',
+      diagnoseSqlChanged:
+        'SQL wurde nach dem Start der Diagnose geändert. Starten Sie die KI-Reparatur erneut, um Änderungen nicht zu überschreiben.',
       diagnosedAndReplaced: 'SQL wurde repariert und ersetzt',
       actionExplain: 'Erklaren',
       actionNl2Sql: 'NL zu SQL',

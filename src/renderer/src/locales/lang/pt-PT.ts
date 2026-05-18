@@ -1820,6 +1820,8 @@ export default {
       statusError: 'Erro',
       statusCancelled: 'Cancelado',
       diagnosing: 'Analisando com IA...',
+      diagnoseInProgress: 'O diagnóstico por IA já está em execução',
+      diagnoseSqlChanged: 'O SQL foi alterado após o início do diagnóstico. Execute a Correção IA novamente para evitar substituir edições.',
       diagnosedAndReplaced: 'SQL corrigido e substituído',
       actionExplain: 'Explicar',
       actionNl2Sql: 'NL para SQL',

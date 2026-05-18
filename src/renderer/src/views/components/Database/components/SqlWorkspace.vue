@@ -435,16 +435,16 @@ const currentDbType = computed<string | undefined>(() => {
   return meta?.dbType
 })
 
-// Format the current selection if the user has one; otherwise format the
-// entire document. Using Monaco's executeEdits (see the editor component)
-// keeps the change in the undo stack so Cmd/Ctrl+Z restores the previous
-// text. On failure we surface a toast and log; the original SQL is left
-// untouched.
 const handleAiFix = (result: SqlResultTab) => {
   if (!result.error) return
   emit('diagnose', result.sql, result.error)
 }
 
+// Format the current selection if the user has one; otherwise format the
+// entire document. Using Monaco's executeEdits (see the editor component)
+// keeps the change in the undo stack so Cmd/Ctrl+Z restores the previous
+// text. On failure we surface a toast and log; the original SQL is left
+// untouched.
 const handleFormat = () => {
   const ed = editorRef.value
   if (!ed) return
