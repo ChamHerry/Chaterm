@@ -203,18 +203,6 @@
             </template>
           </a-directory-tree>
         </div>
-        <div class="kb-capacity-bar">
-          <CloudOutlined :class="['kb-capacity-icon', { 'kb-capacity-icon-syncing': isSyncing }]" />
-          <div class="kb-capacity-info">
-            <div class="kb-capacity-label">{{ $t('knowledgeCenter.myCapacity') }}</div>
-            <div class="kb-capacity-value">{{ formatCapacity(cloudStorage.usedBytes) }} / {{ formatCapacity(displayTotalBytes) }}</div>
-          </div>
-          <a
-            class="kb-capacity-detail-link"
-            @click.prevent="showCapacityDetail = true"
-            >{{ $t('knowledgeCenter.capacityDetail') }}</a
-          >
-        </div>
       </div>
       <template #overlay>
         <a-menu @click="({ key }) => onBlankContextAction(String(key))">
@@ -232,24 +220,6 @@
         </a-menu>
       </template>
     </a-dropdown>
-
-    <a-modal
-      v-model:open="showCapacityDetail"
-      :title="$t('knowledgeCenter.capacitySourceDetail')"
-      :footer="null"
-      width="480px"
-      class="kb-capacity-detail-modal"
-      @cancel="showCapacityDetail = false"
-    >
-      <a-table
-        :columns="capacityDetailColumns"
-        :data-source="capacityDetailData"
-        :pagination="false"
-        size="small"
-        row-key="key"
-      />
-      <div class="kb-capacity-total"> {{ $t('knowledgeCenter.total') }}: {{ formatCapacity(displayTotalBytes) }} </div>
-    </a-modal>
 
     <div
       v-if="Object.keys(importJobs).length"
@@ -275,17 +245,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
 import eventBus from '@/utils/eventBus'
-import {
-  CloudOutlined,
-  CloudUploadOutlined,
-  FileAddOutlined,
-  FolderAddOutlined,
-  PlusOutlined,
-  RedoOutlined,
-  SearchOutlined
-} from '@ant-design/icons-vue'
+import { CloudUploadOutlined, FileAddOutlined, FolderAddOutlined, PlusOutlined, RedoOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { getModifierSymbol, hasPreviewTextSelection, isShortcutEvent } from './utils/kbShortcuts'
-import { resolveKbCapacityDisplay } from './utils/kbCapacity'
 import { getImageMediaType, isImageFile } from '../AiTab/utils'
 
 type KbNodeType = 'file' | 'dir'
@@ -300,53 +261,6 @@ type TreeNode = {
 
 const { t } = useI18n()
 const api = window.api
-
-const cloudStorage = ref({ usedBytes: 0, totalBytes: 1024 * 1024 * 1024 })
-const showCapacityDetail = ref(false)
-const isDeletingCount = ref(0)
-const subscription = ref<string | undefined>(undefined)
-
-const capacityDetailColumns = [
-  { title: () => t('knowledgeCenter.serviceItem'), dataIndex: 'name', key: 'name' },
-  { title: () => t('knowledgeCenter.expireAt'), dataIndex: 'expireAt', key: 'expireAt' },
-  { title: () => t('knowledgeCenter.capacity'), dataIndex: 'capacity', key: 'capacity' }
-]
-const capacityDisplay = computed(() => resolveKbCapacityDisplay(subscription.value))
-const displayTotalBytes = computed(() => capacityDisplay.value.totalBytes)
-const capacityDetailData = computed(() => {
-  const tier = capacityDisplay.value.tier
-  const nameKey = tier === 'pro' ? 'knowledgeCenter.proTierName' : tier === 'ultra' ? 'knowledgeCenter.ultraTierName' : 'knowledgeCenter.freeTierName'
-  return [
-    {
-      key: tier === 'pro' || tier === 'ultra' ? tier : 'free',
-      name: t(nameKey),
-      expireAt: t('knowledgeCenter.expireNever'),
-      capacity: formatCapacity(displayTotalBytes.value)
-    }
-  ]
-})
-
-function formatCapacity(bytes: number): string {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(2)} KB`
-  }
-  return `${bytes} B`
-}
-
-async function loadCloudStorage(): Promise<void> {
-  // Chaterm cloud storage has been removed; capacity display is local-only.
-  cloudStorage.value = { usedBytes: cloudStorage.value.usedBytes, totalBytes: displayTotalBytes.value }
-}
-
-async function loadUserSubscription(): Promise<void> {
-  subscription.value = undefined
-}
 
 function importErrorMessage(err: unknown, forFolder: boolean): string {
   const msg = err instanceof Error ? err.message : String(err)
@@ -719,7 +633,6 @@ async function removeNode(node: TreeNode) {
     content: node.type === 'dir' ? 'Delete folder and its contents?' : 'Delete file?',
     okType: 'danger',
     onOk: async () => {
-      isDeletingCount.value += 1
       try {
         await api.kbDelete(node.relPath, node.type === 'dir')
         await refreshDir(getDirOf(node.relPath))
@@ -727,9 +640,6 @@ async function removeNode(node: TreeNode) {
       } catch (e: unknown) {
         const error = e as Error
         message.error(error?.message || String(e))
-      } finally {
-        isDeletingCount.value -= 1
-        void loadCloudStorage()
       }
     }
   })
@@ -1026,7 +936,6 @@ async function onContextAction(action: string, node: TreeNode) {
         content: `Delete ${targets.length} items?`,
         okType: 'danger',
         onOk: async () => {
-          isDeletingCount.value += 1
           try {
             // Delete deeper paths first to reduce parent/child conflicts
             const sortedTargets = targets.slice().sort((a, b) => b.split('/').filter(Boolean).length - a.split('/').filter(Boolean).length)
@@ -1047,9 +956,6 @@ async function onContextAction(action: string, node: TreeNode) {
           } catch (e: unknown) {
             const error = e as Error
             message.error(error?.message || String(e))
-          } finally {
-            isDeletingCount.value -= 1
-            void loadCloudStorage()
           }
         }
       })
@@ -1121,8 +1027,6 @@ const importJobList = computed(() => {
     percent: j.total ? Math.floor((j.transferred / j.total) * 100) : 0
   }))
 })
-
-const isSyncing = computed(() => Object.keys(importJobs).length > 0 || isDeletingCount.value > 0)
 
 const unsubscribeProgress = ref<(() => void) | null>(null)
 
@@ -1216,8 +1120,6 @@ async function handleDropImport(e: DragEvent) {
 onMounted(async () => {
   await api.kbEnsureRoot()
   await refreshDir('')
-  await loadCloudStorage()
-  await loadUserSubscription()
   eventBus.on('kbActiveFileChanged', handleActiveKbTab)
   eventBus.on('kbRefresh', handleRefresh)
   eventBus.on('kbRefreshAndOpen', handleRefreshAndOpen)
@@ -1228,7 +1130,6 @@ onMounted(async () => {
       importJobs[data.jobId] = { jobId: data.jobId, destRelPath: data.destRelPath, transferred: data.transferred, total: data.total }
       if (data.total === 0) {
         window.setTimeout(() => {
-          void loadCloudStorage()
           delete importJobs[data.jobId]
         }, 1500)
       }
@@ -1238,7 +1139,6 @@ onMounted(async () => {
     job.total = data.total
     if (data.total > 0 && data.transferred >= data.total) {
       window.setTimeout(() => {
-        void loadCloudStorage()
         delete importJobs[data.jobId]
       }, 1500)
     }
@@ -1390,74 +1290,6 @@ onBeforeUnmount(() => {
   }
 }
 
-.kb-capacity-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  margin: 0 8px 8px;
-  background: var(--hover-bg-color, rgba(0, 0, 0, 0.04));
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
-.kb-capacity-icon {
-  color: var(--text-color-secondary);
-  font-size: 18px;
-  margin-top: 2px;
-}
-
-@keyframes kb-cloud-sync {
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  50% {
-    transform: translateY(-3px);
-    opacity: 0.7;
-  }
-}
-
-.kb-capacity-icon-syncing {
-  animation: kb-cloud-sync 1.2s ease-in-out infinite;
-  color: @kb-primary-color;
-}
-
-.kb-capacity-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.kb-capacity-label {
-  font-size: 12px;
-  color: var(--text-color);
-  font-weight: 500;
-}
-
-.kb-capacity-value {
-  font-size: 12px;
-  color: var(--text-color-secondary);
-  margin-top: 2px;
-}
-
-.kb-capacity-detail-link {
-  font-size: 12px;
-  color: var(--kb-primary-color);
-  flex-shrink: 0;
-  &:hover {
-    color: var(--kb-primary-color);
-    opacity: 0.85;
-  }
-}
-
-.kb-capacity-total {
-  margin-top: 12px;
-  text-align: right;
-  font-size: 13px;
-  color: var(--text-color);
-}
-
 .kb-tree {
   background: transparent;
   padding: 0;
@@ -1607,48 +1439,5 @@ onBeforeUnmount(() => {
     font-size: 12px;
     flex-shrink: 0;
   }
-}
-</style>
-
-<style>
-/* AntD modal/table are teleported to body; keep this non-scoped. */
-.kb-capacity-detail-modal .ant-modal-content,
-.kb-capacity-detail-modal .ant-modal-header,
-.kb-capacity-detail-modal .ant-modal-body {
-  background-color: var(--bg-color-secondary) !important;
-  color: var(--text-color) !important;
-}
-
-.kb-capacity-detail-modal .ant-modal-header {
-  border-bottom: 1px solid var(--border-color-light) !important;
-}
-
-.kb-capacity-detail-modal .ant-modal-title,
-.kb-capacity-detail-modal .ant-modal-close,
-.kb-capacity-detail-modal .ant-modal-close-x {
-  color: var(--text-color) !important;
-}
-
-.kb-capacity-detail-modal .ant-table,
-.kb-capacity-detail-modal .ant-table-container,
-.kb-capacity-detail-modal .ant-table-content {
-  background: transparent !important;
-  color: var(--text-color) !important;
-}
-
-.kb-capacity-detail-modal .ant-table-thead > tr > th {
-  background-color: var(--bg-color-tertiary) !important;
-  color: var(--text-color) !important;
-  border-bottom: 1px solid var(--border-color-light) !important;
-}
-
-.kb-capacity-detail-modal .ant-table-tbody > tr > td {
-  background-color: transparent !important;
-  color: var(--text-color-secondary) !important;
-  border-bottom: 1px solid var(--border-color-light) !important;
-}
-
-.kb-capacity-detail-modal .ant-table-tbody > tr:hover > td {
-  background-color: var(--hover-bg-color) !important;
 }
 </style>
