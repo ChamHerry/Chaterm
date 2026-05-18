@@ -2,6 +2,26 @@
   "releaseNotesUrl": "https://github.com/chaterm/Chaterm/releases/tag/v",
   "versions": [
     {
+      "version": "0.11.1",
+      "date": "2026-05-18",
+      "highlights": {
+        "zh-CN": [
+          "JumpServer SFTP 直连模式：新增 sftpDirect 模块，支持直接连接目标资产而非仅通过根目录树浏览",
+          "Ant Design Vue API 迁移：批量替换废弃的 visible 属性为 open，适配 Ant Design Vue 4.x",
+          "资源泄漏修复：修复多个组件中 MutationObserver 和事件监听器未正确清理的问题",
+          "路由守卫重构：使用 Vue Router 4 返回值方式替代 next() 调用",
+          "文件管理器增强：优化 JumpServer 资产信息获取、键盘事件处理与默认路径缓存"
+        ],
+        "en-US": [
+          "JumpServer SFTP direct mode: new sftpDirect module for direct asset connection instead of root directory tree browsing",
+          "Ant Design Vue API migration: batch replace deprecated visible prop with open for Ant Design Vue 4.x compatibility",
+          "Resource leak fixes: properly clean up MutationObserver and event listeners in multiple components",
+          "Route guard refactor: use Vue Router 4 return-value style instead of next() calls",
+          "File manager enhancements: improved JumpServer asset info retrieval, keyboard event handling, and default path caching"
+        ]
+      }
+    },
+    {
       "version": "0.11.0",
       "date": "2026-05-11",
       "highlights": {
