@@ -434,9 +434,7 @@
               allow-clear
               class="transparent-Input"
               :placeholder="t('files.sftpSearchPlaceholder')"
-              @keydown.down.prevent="moveKeyboard(1)"
-              @keydown.up.prevent="moveKeyboard(-1)"
-              @keydown.enter.prevent="confirmKeyboardSelect"
+              @keydown="handleAssetSearchKeydown"
             />
           </div>
 
@@ -662,7 +660,13 @@ const getSshUserConfig = async () => {
 
 const buildSftpConnDataForFiles = async (node: any, side: PanelSide) => {
   const assetUuid = String(node?.uuid || '')
-  const assetInfo = await api.connectAssetInfo({ uuid: assetUuid })
+  const fallbackOrganizationUuid = String(node?.organizationUuid || node?.organization_uuid || node?.organizationId || '')
+  const fallbackIp = String(node?.ip || node?.asset_ip || node?.host || '')
+  const assetInfo = await api.connectAssetInfo({
+    uuid: assetUuid,
+    organizationUuid: fallbackOrganizationUuid || undefined,
+    ip: fallbackIp || undefined
+  })
 
   const cfg: any = await getSshUserConfig()
 
@@ -702,12 +706,16 @@ const buildSftpConnDataForFiles = async (node: any, side: PanelSide) => {
   const sessionId = `files-${side}`
   const connId = `${connUsername}@${displayIp}:${connOrgType}:${hostnameBase64}:${sessionId}`
 
-  const jmsToken = localStorage.getItem('jms-token') || ''
+  const jmsToken = globalThis.localStorage?.getItem?.('jms-token') || ''
   const jumpserverUuid = assetInfo?.organization_uuid || assetUuid
+  const targetAssetUuid = assetInfo?.organization_uuid ? assetInfo?.uuid : node?.targetAssetUuid || node?.targetAssetId || ''
+  const targetAccountUsername =
+    assetInfo?.login_username || assetInfo?.login_user_name || node?.targetAccountUsername || node?.login_username || node?.login_user_name || ''
 
   const connData: any = {
     id: connId,
     assetUuid: jumpserverUuid,
+    targetAssetUuid,
     host: connConnectHost,
     port: connPort,
     username: connUsername,
@@ -717,6 +725,9 @@ const buildSftpConnDataForFiles = async (node: any, side: PanelSide) => {
     targetIp: connHost,
     targetHostname: connHostname,
     targetAsset: connComment || connHost,
+    targetAccountUsername,
+    preferredLoginUsername: assetInfo?.login_username || node?.preferredLoginUsername || undefined,
+    preferredLoginUserName: assetInfo?.login_user_name || node?.preferredLoginUserName || undefined,
     comment: connComment,
     sshType: connSshType,
     terminalType: cfg?.terminalType || 'vt100',
@@ -789,6 +800,9 @@ const connectSftpFromAssetNode = async (node: any, side: PanelSide) => {
     }
 
     if (!targetId) return
+    seedDefaultPathCache(targetId)
+    if (foundNode?.rawId) seedDefaultPathCache(String(foundNode.rawId))
+
     if (side === 'left') {
       selectedLeftUuid.value = targetId
       // The default setting should be kept as "Local"; if the same connection appears, revert to "Local" on the right side
@@ -1854,6 +1868,25 @@ const confirmKeyboardSelect = () => {
   void onHostClick(item)
 }
 
+const handleAssetSearchKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    moveKeyboard(1)
+    return
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveKeyboard(-1)
+    return
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    confirmKeyboardSelect()
+  }
+}
+
 const onHostClick = async (item: HostOption) => {
   if (!item) return
 
@@ -2216,13 +2249,30 @@ const getBasePath = (value: string) => {
 
   return ''
 }
+
 const resolvePaths = (value: string) => {
   if (isLocalId(value)) {
     return localHome.value || ''
   }
 
+  if (value.includes('local-team')) {
+    return '/'
+  }
+
   const [username] = String(value || '').split('@')
   return username === 'root' ? '/root' : `/home/${username}`
+}
+
+const seedDefaultPathCache = (uuid: string) => {
+  const sid = String(uuid || '')
+  if (!sid) return
+
+  const entry = FS_CACHE.get(sid) || {}
+  entry.cache = {
+    path: joinPath(getBasePath(sid), resolvePaths(sid)) || '/',
+    ts: Date.now()
+  }
+  FS_CACHE.set(sid, entry)
 }
 
 // Define editor interface

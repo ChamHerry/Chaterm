@@ -119,15 +119,6 @@ vi.mock('@views/components/LeftTab/config/assetManagement.vue', () => ({
   }
 }))
 
-// Mock vuedraggable with slot support
-vi.mock('vuedraggable', () => ({
-  default: {
-    name: 'Draggable',
-    template: '<div class="draggable-mock"><slot name="item" v-for="item in modelValue" :element="item" /></div>',
-    props: ['modelValue', 'group', 'animation', 'handle', 'itemKey']
-  }
-}))
-
 // Mock i18n
 const mockT = (key: string) => {
   const translations: Record<string, string> = {
@@ -443,10 +434,9 @@ describe('TabsPanel Component', () => {
       }
     })
 
-    it('should have close button rendered in draggable tab structure', () => {
+    it('should have close button rendered in tab bar structure', () => {
       wrapper = createWrapper()
-      // The close button is within the draggable structure
-      // Since we're mocking draggable, we just verify the component structure
+      // The close button is within the tab bar structure.
       const vm = wrapper.vm as any
       expect(vm.localTab).toBeDefined()
       expect(vm.localTab.id).toBe('test-tab-1')

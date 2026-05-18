@@ -313,8 +313,8 @@
                   <a-dropdown
                     placement="bottom"
                     trigger="click"
-                    :visible="dropdownVisible[record.name]"
-                    @visible-change="(visible) => handleDropdownVisibleChange(visible, record.name)"
+                    :open="dropdownVisible[record.name]"
+                    @open-change="(visible) => handleDropdownVisibleChange(visible, record.name)"
                   >
                     <a-tooltip :title="t('files.more')">
                       <a-button
@@ -386,7 +386,7 @@
     </a-card>
 
     <a-modal
-      v-model:visible="chmodFileDialog"
+      v-model:open="chmodFileDialog"
       :title="`${t('files.permissionSettings')} - ${currentRecord?.name || ''}`"
       :width="500"
       @ok="chmodOk"

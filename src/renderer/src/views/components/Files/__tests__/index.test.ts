@@ -252,6 +252,75 @@ describe('index.vue', () => {
     wrapper.unmount()
   })
 
+  it('defaults JumpServer/team SFTP panels to root instead of user home', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const vm = wrapper.vm as any
+    expect(vm.resolvePaths('wangxc_a_bj@10.88.202.214:local-team:aG9zdA==:files-left')).toBe('/')
+    expect(vm.resolvePaths('root@10.0.0.2:ssh:xx')).toBe('/root')
+    expect(vm.resolvePaths('dev@10.0.0.2:ssh:xx')).toBe('/home/dev')
+
+    wrapper.unmount()
+  })
+
+  it('open JumpServer asset in Files: passes asset fallback and direct SFTP target metadata', async () => {
+    api.connectAssetInfo.mockResolvedValueOnce({
+      uuid: 'target-asset-uuid',
+      organization_uuid: 'bastion-uuid',
+      asset_ip: 'bastion-host',
+      host: '10.0.0.5',
+      hostname: 'target-host',
+      username: 'jms-user',
+      password: 'pw',
+      auth_type: 'password',
+      port: 2222,
+      sshType: 'jumpserver',
+      asset_type: 'organization-jumpserver',
+      login_username: 'root',
+      login_user_name: 'Root'
+    })
+    api.sftpConnList.mockResolvedValue([{ id: 'jms-user@10.0.0.5:local-team:encoded:target-host:files-left', isSuccess: true }])
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await (wrapper.vm as any).connectSftpFromAssetNode(
+      {
+        uuid: 'stale-target-uuid',
+        ip: '10.0.0.5',
+        title: 'target-host',
+        organizationId: 'bastion-uuid',
+        sshType: 'jumpserver'
+      },
+      'left'
+    )
+    await flushPromises()
+
+    expect(api.connectAssetInfo).toHaveBeenCalledWith({
+      uuid: 'stale-target-uuid',
+      organizationUuid: 'bastion-uuid',
+      ip: '10.0.0.5'
+    })
+    expect(api.sftpConnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'jms-user@10.0.0.5:local-team:encoded:target-host:files-left',
+        assetUuid: 'bastion-uuid',
+        targetAssetUuid: 'target-asset-uuid',
+        host: 'bastion-host',
+        username: 'jms-user',
+        sshType: 'jumpserver',
+        targetIp: '10.0.0.5',
+        targetHostname: 'target-host',
+        targetAccountUsername: 'root',
+        preferredLoginUsername: 'root',
+        preferredLoginUserName: 'Root'
+      })
+    )
+
+    wrapper.unmount()
+  })
+
   it('list sessions + active highlight: Local injected and active terminal gets class', async () => {
     api.sftpConnList.mockResolvedValueOnce([
       { id: 'root@10.0.0.2:ssh:xx', isSuccess: true },

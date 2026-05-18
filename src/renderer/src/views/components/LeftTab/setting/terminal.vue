@@ -171,7 +171,7 @@
     </a-card>
 
     <a-modal
-      v-model:visible="agentConfigModalVisible"
+      v-model:open="agentConfigModalVisible"
       :title="$t('user.sshAgentSettings')"
       width="700px"
       class="agent-config-modal"
@@ -228,7 +228,7 @@
     </a-modal>
 
     <a-modal
-      v-model:visible="sshProxyConfigShowModalVisible"
+      v-model:open="sshProxyConfigShowModalVisible"
       :title="$t('user.proxySettings')"
       width="700px"
       class="proxy-config-modal"

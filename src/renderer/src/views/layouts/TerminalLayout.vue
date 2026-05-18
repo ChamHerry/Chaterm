@@ -317,7 +317,7 @@ interface ResizeParams {
 import { useI18n } from 'vue-i18n'
 import { userConfigStore } from '@/services/userConfigStoreService'
 import { userConfigStore as piniaUserConfigStore } from '@/store/userConfigStore'
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { Pane, Splitpanes } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import AiTab from '@views/components/AiTab/index.vue'
@@ -1962,6 +1962,7 @@ onUnmounted(() => {
   }
   document.removeEventListener('mousemove', handleGlobalMouseMove)
   window.removeEventListener('keydown', handleCloseTabKeyDown)
+  cleanupTabContextMenu?.()
 
   eventBus.off('currentClickServer', currentClickServer)
   eventBus.off('getActiveTabAssetInfo', handleGetActiveTabAssetInfo)
@@ -2715,15 +2716,19 @@ const contextMenu = ref({
   tabEl: null as HTMLElement | null
 })
 const contextMenuRef = ref<HTMLElement | null>(null)
+let cleanupTabContextMenu: (() => void) | null = null
 
 const hideContextMenu = () => {
   contextMenu.value.visible = false
 }
 const setupTabContextMenu = () => {
+  cleanupTabContextMenu?.()
+
   // Listen to dockview container
   const container = dockviewRef.value?.$el
   if (!container) return
-  container.addEventListener('contextmenu', (e: MouseEvent) => {
+
+  const handleContextMenu = (e: MouseEvent) => {
     const target = e.target as HTMLElement
     const tabElement = target.closest('.dv-tab') as HTMLElement | null
     if (tabElement) {
@@ -2740,7 +2745,9 @@ const setupTabContextMenu = () => {
     } else {
       hideContextMenu()
     }
-  })
+  }
+
+  container.addEventListener('contextmenu', handleContextMenu)
 
   const handleMouseDown = (e: MouseEvent) => {
     if (!contextMenu.value.visible) return
@@ -2757,9 +2764,11 @@ const setupTabContextMenu = () => {
 
   document.addEventListener('mousedown', handleMouseDown, true)
 
-  onBeforeUnmount(() => {
+  cleanupTabContextMenu = () => {
+    container.removeEventListener('contextmenu', handleContextMenu)
     document.removeEventListener('mousedown', handleMouseDown, true)
-  })
+    cleanupTabContextMenu = null
+  }
 }
 
 const findPanelIdFromTab = (tabElement: HTMLElement): string | null => {

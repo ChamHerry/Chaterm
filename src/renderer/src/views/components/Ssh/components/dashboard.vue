@@ -44,6 +44,11 @@ const logger = createRendererLogger('ssh.dashboard')
 
 // Reactive theme tracking
 const isDark = ref(document.documentElement.className.includes('theme-dark'))
+let themeObserver: MutationObserver | null = null
+
+const handleWindowFocus = () => {
+  loadShortcuts()
+}
 
 const logoSrc = computed(() => (isDark.value ? logoDark : logoLight))
 
@@ -112,26 +117,22 @@ onMounted(() => {
   loadShortcuts()
 
   // Observe theme changes on document.documentElement
-  const observer = new MutationObserver(() => {
+  themeObserver = new MutationObserver(() => {
     isDark.value = document.documentElement.className.includes('theme-dark')
   })
-  observer.observe(document.documentElement, {
+  themeObserver.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['class']
   })
 
   // Listen for window focus to refresh shortcuts when user returns from settings
-  const handleWindowFocus = () => {
-    loadShortcuts()
-  }
-
   window.addEventListener('focus', handleWindowFocus)
+})
 
-  // Cleanup listeners on unmount
-  onUnmounted(() => {
-    observer.disconnect()
-    window.removeEventListener('focus', handleWindowFocus)
-  })
+onUnmounted(() => {
+  themeObserver?.disconnect()
+  themeObserver = null
+  window.removeEventListener('focus', handleWindowFocus)
 })
 </script>
 

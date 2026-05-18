@@ -1,7 +1,7 @@
 <template>
   <a-modal
     :title="type === 'move' ? $t('files.moveTo') : $t('files.cpTo')"
-    :visible="visible"
+    :open="visible"
     :confirm-loading="confirmLoading"
     :ok-text="$t('common.confirm')"
     :cancel-text="$t('common.cancel')"
@@ -39,7 +39,7 @@
           >
             <a-dropdown
               trigger="click"
-              @visible-change="(v) => v && loadSubDirs(i)"
+              @open-change="(v) => v && loadSubDirs(i)"
             >
               <template #overlay>
                 <a-menu
@@ -80,7 +80,7 @@
     </div>
   </a-modal>
   <a-modal
-    v-model:visible="showConflictModal"
+    v-model:open="showConflictModal"
     :title="$t('files.conflictTips')"
     :footer="null"
     @cancel="handleConflictAction('cancel')"

@@ -2,41 +2,37 @@ import { getCurrentYixinUser, isYixinSessionToken, clearCurrentSession } from '@
 
 const logger = createRendererLogger('router')
 
-export const beforeEach = async (to, _from, next) => {
+export const beforeEach = async (to) => {
   if (to.path === '/login') {
-    next()
-    return
+    return true
   }
 
   const token = localStorage.getItem('ctm-token')
   if (!isYixinSessionToken(token)) {
     clearCurrentSession()
-    next('/login')
-    return
+    return '/login'
   }
 
   try {
     const userInfo = getCurrentYixinUser()
     if (!userInfo?.uid) {
       clearCurrentSession()
-      next('/login')
-      return
+      return '/login'
     }
 
     const api = window.api as any
     const dbResult = await api.initUserDatabase({ uid: userInfo.uid })
     if (dbResult.success) {
-      next()
-      return
+      return true
     }
 
     logger.error('Database initialization failed, redirecting to login page')
     clearCurrentSession()
-    next('/login')
+    return '/login'
   } catch (error) {
     logger.error('Processing failed', { error })
     clearCurrentSession()
-    next('/login')
+    return '/login'
   }
 }
 

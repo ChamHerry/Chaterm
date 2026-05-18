@@ -231,6 +231,27 @@ describe('files.vue (enhanced)', () => {
     wrapper.unmount()
   })
 
+  it('mounts JumpServer virtual asset panels with root shown in the address input', async () => {
+    const uuid = 'wangxc_a_bj@10.88.202.214:local-team:aG9zdA==:files-left'
+    api.sshSftpList.mockResolvedValueOnce([
+      { name: 'etc', path: '/etc', isDir: true, mode: '0755', isLink: false, modTime: '', size: 0 },
+      { name: 'home', path: '/home', isDir: true, mode: '0755', isLink: false, modTime: '', size: 0 }
+    ] as any)
+
+    const wrapper = mountView({
+      uuid,
+      currentDirectoryInput: '/',
+      basePath: '/Default/ISOS-10.88.202.214-'
+    })
+    await flushPromises()
+
+    const vm = wrapper.vm as any
+    expect(api.sshSftpList).toHaveBeenCalledWith({ path: '/Default/ISOS-10.88.202.214-/', id: uuid })
+    expect(vm.localCurrentDirectoryInput).toBe('/')
+
+    wrapper.unmount()
+  })
+
   it('does not insert parent when root "/" or Windows drive root like "C:/"', async () => {
     // Root
     api.sshSftpList.mockResolvedValueOnce([] as any)

@@ -1,6 +1,6 @@
 <template>
   <a-modal
-    v-model:visible="showUserSelectionDialog"
+    v-model:open="showUserSelectionDialog"
     :title="$t('userSelection.title')"
     width="520px"
     :mask-closable="false"

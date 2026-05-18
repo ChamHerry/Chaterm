@@ -2553,7 +2553,13 @@ export const pickReconnectConnectionInfo = (connectionInfo: any) => {
     connIdentToken: connectionInfo.connIdentToken,
     asset_type: connectionInfo.asset_type,
     assetUuid: connectionInfo.assetUuid,
+    targetAssetUuid: connectionInfo.targetAssetUuid,
+    targetAsset: connectionInfo.targetAsset,
+    targetAccountUsername: connectionInfo.targetAccountUsername,
+    preferredLoginUsername: connectionInfo.preferredLoginUsername,
+    preferredLoginUserName: connectionInfo.preferredLoginUserName,
     targetIp: connectionInfo.targetIp,
+    targetHostname: connectionInfo.targetHostname,
     terminalType: connectionInfo.terminalType
   }
 }

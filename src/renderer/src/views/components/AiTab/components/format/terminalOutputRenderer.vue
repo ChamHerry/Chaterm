@@ -84,6 +84,7 @@ const isCollapsible = computed(() => outputLines.value > 10)
 
 let terminal: Terminal | null = null
 let lastContent: string = ''
+let themeObserver: MutationObserver | null = null
 
 // Performance optimization: precompile regex patterns
 // Unified color scheme
@@ -3385,7 +3386,7 @@ onMounted(async () => {
   document.addEventListener('keydown', handleCopyKeydown, true)
 
   // Watch theme changes
-  const themeObserver = new MutationObserver((mutations) => {
+  themeObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.type === 'attributes' && (mutation.attributeName === 'class' || mutation.attributeName === 'data-theme-id')) {
         if (terminal) {
@@ -3398,14 +3399,11 @@ onMounted(async () => {
     attributes: true,
     attributeFilter: ['class', 'data-theme-id']
   })
-
-  // Clean up observer when component unmounts
-  onBeforeUnmount(() => {
-    themeObserver.disconnect()
-  })
 })
 
 onBeforeUnmount(() => {
+  themeObserver?.disconnect()
+  themeObserver = null
   document.removeEventListener('keydown', handleCopyKeydown, true)
   if (terminal) {
     terminal.dispose()

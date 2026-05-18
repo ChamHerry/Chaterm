@@ -81,7 +81,7 @@
                 :trigger="['contextmenu']"
                 placement="bottomLeft"
                 transition-name=""
-                @visible-change="
+                @open-change="
                   (visible) => {
                     if (visible) {
                       menuKey = dataRef.key

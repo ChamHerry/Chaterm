@@ -1,6 +1,6 @@
 <template>
   <a-modal
-    v-model:visible="showOtpDialog"
+    v-model:open="showOtpDialog"
     :title="$t('mfa.title')"
     width="400px"
     :mask-closable="false"
