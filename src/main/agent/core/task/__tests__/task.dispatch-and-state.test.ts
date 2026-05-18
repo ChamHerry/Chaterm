@@ -59,6 +59,7 @@ describe('Task dispatch and state flow', () => {
     task = Object.create((Task as unknown as { prototype: object }).prototype) as any
     task.taskId = 'task-test'
     task.userMessageContent = []
+    task.assistantMessageContent = []
     task.chatermMessages = []
     task.pendingToolResults = []
     task.userMessageContentReady = true
@@ -101,6 +102,30 @@ describe('Task dispatch and state flow', () => {
       contentParts,
       toolResult
     })
+  })
+
+  it('queuePresentAssistantMessage should absorb stale ask promise rejections', async () => {
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    task.presentAssistantMessage = vi.fn().mockRejectedValue(new Error('Current ask promise was ignored'))
+
+    task.queuePresentAssistantMessage()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    process.off('unhandledRejection', unhandled)
+    expect(task.presentAssistantMessage).toHaveBeenCalledTimes(1)
+    expect(unhandled).not.toHaveBeenCalled()
+  })
+
+  it('handleTextChunk should schedule assistant presentation through guarded queue', async () => {
+    task.assistantMessageContent = []
+    task.queuePresentAssistantMessage = vi.fn()
+
+    const result = await task.handleTextChunk({ type: 'text', text: 'hello' }, '', '')
+
+    expect(result).toBe('hello')
+    expect(task.assistantMessageContent).toEqual([{ type: 'text', content: 'hello', partial: true }])
+    expect(task.queuePresentAssistantMessage).toHaveBeenCalledTimes(1)
   })
 
   it('handleToolUse should block tool execution in chat mode', async () => {

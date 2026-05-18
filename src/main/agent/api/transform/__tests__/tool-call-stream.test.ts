@@ -33,6 +33,38 @@ describe('native OpenAI-style tool call stream accumulator', () => {
     expect(calls[0]).toMatchObject({ invalid: true, id: 'call_bad', name: 'list_tables', rawArguments: '{bad' })
   })
 
+  it('repairs malformed execute_command JSON with unescaped shell quotes', () => {
+    const accumulator = new OpenAiToolCallStreamAccumulator()
+
+    accumulator.append([
+      {
+        index: 0,
+        id: 'call_cmd',
+        function: {
+          name: 'execute_command',
+          arguments: '{"ip":"10.0.0.1","command":"awk "{print $1}" /var/log/app.log","requires_approval":false,"interactive":false}'
+        }
+      }
+    ])
+
+    const calls = accumulator.flush('openai')
+
+    expect(calls).toEqual([
+      {
+        id: 'call_cmd',
+        name: 'execute_command',
+        input: {
+          ip: '10.0.0.1',
+          command: 'awk "{print $1}" /var/log/app.log',
+          requires_approval: true,
+          interactive: false
+        },
+        rawArguments: '{"ip":"10.0.0.1","command":"awk "{print $1}" /var/log/app.log","requires_approval":false,"interactive":false}',
+        provider: 'openai'
+      }
+    ])
+  })
+
   it('requires native arguments to be JSON objects', () => {
     expect(parseNativeToolArguments('[]')).toMatchObject({ ok: false })
     expect(parseNativeToolArguments('"x"')).toMatchObject({ ok: false })

@@ -143,6 +143,7 @@ const logger = createLogger('agent')
 
 type ToolResponse = string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>
 type UserContent = Array<Anthropic.ContentBlockParam>
+const IGNORED_ASK_PROMISE_MESSAGE = 'Current ask promise was ignored'
 
 /**
  * Check if a tool allows partial block execution
@@ -1356,7 +1357,7 @@ export class Task {
     if (partial !== undefined) {
       await this.handleAskPartialMessage(type, askTsRef, text, partial, mcpToolCall)
       if (partial) {
-        throw new Error('Current ask promise was ignored')
+        throw new Error(IGNORED_ASK_PROMISE_MESSAGE)
       }
     } else {
       this.resetAskState()
@@ -1375,7 +1376,7 @@ export class Task {
     })
 
     if (this.lastMessageTs !== askTsRef.value) {
-      throw new Error('Current ask promise was ignored')
+      throw new Error(IGNORED_ASK_PROMISE_MESSAGE)
     }
 
     const payload = this.askResponsePayload
@@ -1388,6 +1389,28 @@ export class Task {
 
   private resetAskState(): void {
     this.askResponsePayload = undefined
+  }
+
+  private queuePresentAssistantMessage(): void {
+    void this.presentAssistantMessage().catch((error) => {
+      if (this.isIgnoredAskPromiseError(error)) {
+        logger.debug('Ignored stale ask promise after newer assistant message update', {
+          event: 'agent.ask.ignored',
+          taskId: this.taskId
+        })
+        return
+      }
+
+      logger.error('Failed to present assistant message', {
+        event: 'agent.presentAssistantMessage.error',
+        taskId: this.taskId,
+        error
+      })
+    })
+  }
+
+  private isIgnoredAskPromiseError(error: unknown): boolean {
+    return error instanceof Error && error.message === IGNORED_ASK_PROMISE_MESSAGE
   }
 
   private async handleAskPartialMessage(
@@ -2322,13 +2345,13 @@ export class Task {
       this.currentStreamingContentIndex++
 
       if (this.currentStreamingContentIndex < this.assistantMessageContent.length) {
-        this.presentAssistantMessage()
+        this.queuePresentAssistantMessage()
         return
       }
     }
     // block is partial, but the read stream may have finished
     if (this.presentAssistantMessageHasPendingUpdates) {
-      this.presentAssistantMessage()
+      this.queuePresentAssistantMessage()
     }
   }
 
@@ -2689,7 +2712,7 @@ export class Task {
     assistantMessage += chunk.text
     this.appendAssistantTextChunk(chunk.text)
 
-    this.presentAssistantMessage()
+    this.queuePresentAssistantMessage()
     return assistantMessage
   }
 
@@ -2713,7 +2736,7 @@ export class Task {
     if (!toolUse) return
     this.assistantMessageContent.push(toolUse)
     this.userMessageContentReady = false
-    this.presentAssistantMessage()
+    this.queuePresentAssistantMessage()
   }
 
   private async handleInvalidToolCallChunk(chunk: ApiStreamInvalidToolCallChunk): Promise<void> {
@@ -2883,7 +2906,7 @@ export class Task {
     })
 
     if (partialBlocks.length > 0) {
-      this.presentAssistantMessage()
+      this.queuePresentAssistantMessage()
     }
   }
 
@@ -3924,8 +3947,8 @@ export class Task {
         case 'describe_table':
           await this.handleDbToolUse(block, (session) =>
             runDescribeTable(session, {
-              database: block.params.database ?? '',
-              schema: block.params.schema,
+              database: block.params.database ?? session.databaseName ?? '',
+              schema: block.params.schema ?? session.schemaName,
               table: block.params.table ?? ''
             })
           )
@@ -3933,8 +3956,8 @@ export class Task {
         case 'inspect_indexes':
           await this.handleDbToolUse(block, (session) =>
             runInspectIndexes(session, {
-              database: block.params.database ?? '',
-              schema: block.params.schema,
+              database: block.params.database ?? session.databaseName ?? '',
+              schema: block.params.schema ?? session.schemaName,
               table: block.params.table ?? ''
             })
           )
@@ -3942,8 +3965,8 @@ export class Task {
         case 'sample_rows':
           await this.handleDbToolUse(block, (session) =>
             runSampleRows(session, {
-              database: block.params.database ?? '',
-              schema: block.params.schema,
+              database: block.params.database ?? session.databaseName ?? '',
+              schema: block.params.schema ?? session.schemaName,
               table: block.params.table ?? '',
               limit: block.params.limit
             })
@@ -3952,8 +3975,8 @@ export class Task {
         case 'count_rows':
           await this.handleDbToolUse(block, (session) =>
             runCountRows(session, {
-              database: block.params.database ?? '',
-              schema: block.params.schema,
+              database: block.params.database ?? session.databaseName ?? '',
+              schema: block.params.schema ?? session.schemaName,
               table: block.params.table ?? '',
               exact: block.params.exact
             })
@@ -3983,8 +4006,8 @@ export class Task {
         case 'suggest_indexes':
           await this.handleDbToolUse(block, (session) =>
             runSuggestIndexes(session, {
-              database: block.params.database ?? '',
-              schema: block.params.schema,
+              database: block.params.database ?? session.databaseName ?? '',
+              schema: block.params.schema ?? session.schemaName,
               table: block.params.table ?? '',
               query_patterns: block.params.query_patterns
             })

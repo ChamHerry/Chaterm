@@ -195,6 +195,50 @@ describe('Task.abortTask - workspace-conditional cleanup', () => {
   })
 })
 
+describe('Task.handleToolUse - DB table tool defaults', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses current DB context when native table tools omit optional database/schema', async () => {
+    const session = {
+      databaseName: 'app_prod',
+      schemaName: 'public',
+      listSchemas: vi.fn(async () => ['public']),
+      hasSchema: vi.fn(async () => true),
+      hasTable: vi.fn(async () => true),
+      listColumnsDetailed: vi.fn(async () => [{ name: 'id', type: 'integer', nullable: false }]),
+      getTableDdl: vi.fn(async () => 'CREATE TABLE public.users (id integer)')
+    }
+    const task = Object.create((Task as unknown as { prototype: object }).prototype) as any
+    task.taskId = 'task-db-defaults'
+    task.workspace = 'database'
+    task.dbContext = { assetId: 'asset-1', dbType: 'postgresql', databaseName: 'app_prod', schemaName: 'public' }
+    task.userMessageContent = []
+    task.didRejectTool = false
+    task.didAlreadyUseTool = false
+    task.getToolDescription = vi.fn(() => '[describe_table]')
+    task.getOrCreateDbAiSession = vi.fn(async () => session)
+    task.say = vi.fn().mockResolvedValue(undefined)
+    task.pushToolResult = vi.fn().mockResolvedValue(undefined)
+    task.saveCheckpoint = vi.fn().mockResolvedValue(undefined)
+    task.addTodoStatusUpdateReminder = vi.fn().mockResolvedValue(undefined)
+    task.responseFormatter = {
+      toolError: (msg: string) => `ERR:${msg}`,
+      toolResult: (msg: string) => msg,
+      toolAlreadyUsed: (name: string) => `USED:${name}`
+    }
+
+    await task.handleToolUse({ name: 'describe_table', params: { table: 'users' }, partial: false })
+
+    expect(session.hasTable).toHaveBeenCalledWith('app_prod', 'users', 'public')
+    expect(session.listColumnsDetailed).toHaveBeenCalledWith('app_prod', 'users', 'public')
+    expect(task.pushToolResult).toHaveBeenCalledWith('[describe_table]', expect.stringContaining('"database": "app_prod"'), {
+      skipOffload: true
+    })
+  })
+})
+
 interface MockBuildSystemPromptThis {
   workspace: 'server' | 'database'
   hosts?: Array<{ host: string }>

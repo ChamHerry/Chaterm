@@ -75,19 +75,19 @@ const toolMetadataInternal = [
   {
     name: 'execute_command',
     allowedIn: ['server'],
-    paramNames: ['command', 'ip', 'requires_approval', 'interactive', 'depositExperience'],
+    paramNames: ['command', 'ip', 'requires_approval'],
     category: 'server'
   },
   {
     name: 'write_to_file',
     allowedIn: ['server'],
-    paramNames: ['path', 'file_path', 'content', 'diff', 'ip'],
+    paramNames: ['path', 'content', 'ip'],
     category: 'server'
   },
   {
     name: 'read_file',
     allowedIn: ['server'],
-    paramNames: ['path', 'file_path', 'ip', 'offset', 'limit'],
+    paramNames: ['path', 'ip', 'offset', 'limit'],
     category: 'server'
   },
   {
@@ -136,13 +136,13 @@ const toolMetadataInternal = [
   {
     name: 'glob_search',
     allowedIn: ['server'],
-    paramNames: ['pattern', 'file_pattern', 'path', 'ip', 'limit', 'sort'],
+    paramNames: ['pattern', 'path', 'ip', 'limit', 'sort'],
     category: 'server'
   },
   {
     name: 'grep_search',
     allowedIn: ['server'],
-    paramNames: ['pattern', 'regex', 'path', 'ip', 'include', 'file_pattern', 'case_sensitive', 'context_lines', 'max_matches'],
+    paramNames: ['pattern', 'path', 'ip', 'include', 'case_sensitive', 'context_lines', 'max_matches'],
     category: 'server'
   },
   {
@@ -419,11 +419,11 @@ const paramSchemas: Record<ToolParamName, JsonSchemaValue> = {
 }
 
 const requiredParamsByTool: Partial<Record<ToolUseName, readonly ToolParamName[]>> = {
-  execute_command: ['ip', 'command', 'requires_approval', 'interactive'],
+  execute_command: ['ip', 'command', 'requires_approval'],
   write_to_file: ['path', 'content'],
-  read_file: ['path', 'limit', 'offset'],
+  read_file: ['path'],
   ask_followup_question: ['question'],
-  attempt_completion: ['result', 'depositExperience'],
+  attempt_completion: ['result'],
   new_task: ['context'],
   report_bug: ['title', 'what_happened', 'steps_to_reproduce', 'api_request_output', 'additional_context'],
   glob_search: ['pattern'],
