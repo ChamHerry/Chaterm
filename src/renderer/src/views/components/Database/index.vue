@@ -254,7 +254,7 @@ const dbAiContext = ref<{
   assetId?: string
   databaseName?: string
   schemaName?: string
-  dbType?: 'mysql' | 'postgresql'
+  dbType?: 'mysql' | 'postgresql' | 'sqlite'
 }>({})
 
 const canToggleAiPane = computed(() => {
@@ -960,7 +960,7 @@ const handleSelectRow = (rowKey: string) => {
 interface TableActionCtx {
   nodeId: string
   assetId: string
-  dbType: 'mysql' | 'postgresql'
+  dbType: 'mysql' | 'postgresql' | 'sqlite'
   databaseName: string
   schemaName?: string
   tableName: string
@@ -1013,7 +1013,7 @@ const handleTableAction = async (payload: { action: TableActionKind; ctx: TableA
       message.success(t('database.tableMenu.nameCopied'))
       return
     case 'copySelect': {
-      const qualified = buildQualifiedTable(ctx.dbType, ctx.schemaName, ctx.tableName)
+      const qualified = buildQualifiedTable(ctx.dbType, ctx.dbType === 'sqlite' ? ctx.databaseName : ctx.schemaName, ctx.tableName)
       await copyTextToClipboard(`SELECT * FROM ${qualified}`)
       message.success(t('database.tableMenu.selectCopied'))
       return

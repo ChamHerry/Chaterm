@@ -11,9 +11,9 @@
 //
 // Placeholders (replaced by `renderDatabaseChatSystemPrompt`):
 //   - {{assetId}}    stable connection identifier
-//   - {{dbType}}     'mysql' | 'postgresql'
-//   - {{database}}   current database name (MySQL) or cluster database (PG)
-//   - {{schema}}     current schema name (PG); blank for MySQL
+//   - {{dbType}}     'mysql' | 'postgresql' | 'sqlite'
+//   - {{database}}   current database name (MySQL/PG) or SQLite attached alias
+//   - {{schema}}     current schema name (PG); blank for MySQL/SQLite
 //
 // See docs/database_ai.md §9.3 for the prompt-selection design.
 
@@ -79,13 +79,13 @@ Parameters: (none)
 Use when: the user asks "what databases are here?" or you need to cross-check that the current database exists.
 
 ## list_schemas
-Description: List schemas inside a database. For MySQL this typically returns the single current database; for PostgreSQL it returns search_path-visible schemas.
+Description: List schemas inside a database. PostgreSQL returns search_path-visible schemas; MySQL has no separate schema layer; SQLite has no independent schema layer and uses database as the attached alias (for example main).
 Parameters:
 - database: (optional) target database name; defaults to the current database.
 Use when: exploring a new database or resolving an unqualified table reference.
 
 ## list_tables
-Description: List tables (and views, when available) inside a database+schema.
+Description: List tables (and views, when available) inside a database+schema. For SQLite, database means the attached alias and schema is usually omitted.
 Parameters:
 - database: (optional) target database name; defaults to the current database.
 - schema: (optional) target schema name; defaults to the current schema.
@@ -116,12 +116,12 @@ Parameters:
 Use when: you need to see realistic values (enum codes, date formats, null-handling) before writing a query. In your reply, use sample data only to understand data shape — do not repeat raw sensitive field values (phone numbers, emails, ID numbers, names, order details). Describe structure and distribution instead; redact if a specific value must be shown.
 
 ## count_rows
-Description: Return an approximate row count for a table. Uses information_schema on MySQL and pg_class.reltuples on PostgreSQL - treat the number as an estimate, not an exact count.
+Description: Return a row count for a table. MySQL uses information_schema and PostgreSQL uses pg_class.reltuples for approximate counts; SQLite uses exact COUNT(*), so treat only MySQL/PostgreSQL approximate results as estimates.
 Parameters:
 - database: (optional)
 - schema: (optional)
 - table: (required)
-- exact: (optional) request an exact count. Only use when the table is estimated to have fewer than 10,000 rows; leave unset unless the user explicitly asks for exact numbers.
+- exact: (optional) request an exact count. For MySQL/PostgreSQL, only use when the table is estimated to have fewer than 10,000 rows; SQLite is exact by default.
 
 ## explain_plan
 Description: Return the EXPLAIN plan for a SELECT statement. ANALYZE/ANALYSE variants are disabled because they execute the query. Use this to diagnose slow queries or estimate cost before recommending a rewrite.
@@ -257,13 +257,13 @@ export const CHAT_SYSTEM_PROMPT_DATABASE_CN = `你是 Chaterm DB-AI，专为用�
 适用时机：用户询问"这里有哪些数据库"，或你需要确认当前数据库存在。
 
 ## list_schemas
-说明：列出数据库下的 schema 列表。MySQL 通常只返回当前数据库自身；PostgreSQL 返回 search_path 可见的 schema。
+说明：列出数据库下的 schema 列表。PostgreSQL 返回 search_path 可见的 schema；MySQL 没有独立 schema 层；SQLite 没有独立 schema 层，database 表示附加数据库别名（例如 main）。
 参数：
 - database：（可选）目标数据库名；默认当前数据库。
 适用时机：探索新数据库，或消歧一个未限定 schema 的表引用。
 
 ## list_tables
-说明：列出数据库+schema 下的表（若支持，同时包含视图）。
+说明：列出数据库+schema 下的表（若支持，同时包含视图）。SQLite 中 database 表示附加数据库别名，通常不需要 schema。
 参数：
 - database：（可选）目标数据库名；默认当前数据库。
 - schema：（可选）目标 schema 名；默认当前 schema。
@@ -294,12 +294,12 @@ export const CHAT_SYSTEM_PROMPT_DATABASE_CN = `你是 Chaterm DB-AI，专为用�
 适用时机：在写查询前需要查看真实取值（枚举码、日期格式、NULL 处理方式）。在回复中，样本数据仅用于理解数据形态——不要复述手机号、邮箱、身份证号、姓名、订单信息等敏感字段原值；应描述结构和分布，必要展示时做脱敏处理。
 
 ## count_rows
-说明：返回表的近似行数。MySQL 使用 information_schema，PostgreSQL 使用 pg_class.reltuples——把这个数字当作估算值，而不是精确值。
+说明：返回表行数。MySQL 使用 information_schema，PostgreSQL 使用 pg_class.reltuples 时是估算值；SQLite 使用精确 COUNT(*)。只有 MySQL/PostgreSQL 的近似结果应被当作估算。
 参数：
 - database：（可选）
 - schema：（可选）
 - table：（必填）
-- exact：（可选）请求精确计数。仅当表的估算行数少于 10,000 行时才使用；除非用户明确要求精确值，否则不要启用。
+- exact：（可选）请求精确计数。MySQL/PostgreSQL 仅当估算行数少于 10,000 时使用；SQLite 默认就是精确计数。
 
 ## explain_plan
 说明：返回 SELECT 语句的 EXPLAIN 计划。ANALYZE/ANALYSE 变体被禁用（它们会真正执行查询）。适用于诊断慢查询或评估重写代价。

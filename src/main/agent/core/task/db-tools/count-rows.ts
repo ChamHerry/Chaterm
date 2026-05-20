@@ -79,7 +79,7 @@ export async function runCountRows(session: DbAiActiveSession, input: CountRowsI
   const engine = session.dbType
   const dialect = dialectOf(session)
   try {
-    if (!exact) {
+    if (!exact && engine !== 'sqlite') {
       let n = 0
       let executedSql = ''
       if (engine === 'mysql') {
@@ -114,6 +114,8 @@ export async function runCountRows(session: DbAiActiveSession, input: CountRowsI
     }
 
     // Exact count: SELECT COUNT(*) against the quoted, validated table.
+    // SQLite has no cheap catalog-wide approximate count equivalent, so it
+    // always takes this exact path even when exact=false.
     const qualified = qualifiedTableName(dialect, {
       database: db.value,
       schema: schema.value,

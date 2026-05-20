@@ -48,7 +48,7 @@ const emit = defineEmits<{
     payload: {
       id: string
       assetId: string
-      dbType: 'mysql' | 'postgresql'
+      dbType: 'mysql' | 'postgresql' | 'sqlite'
       databaseName: string
       schemaName?: string
       tableName: string

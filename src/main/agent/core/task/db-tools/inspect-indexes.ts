@@ -101,6 +101,10 @@ function aggregateRows(rows: Array<Record<string, unknown>>, engine: 'mysql' | '
   return Array.from(byName.values())
 }
 
+function quoteSqliteIdentifier(name: string): string {
+  return '"' + String(name).replace(/"/g, '""') + '"'
+}
+
 export async function runInspectIndexes(session: DbAiActiveSession, input: InspectIndexesInput): Promise<DbToolResult<InspectIndexesResult>> {
   const db = requireStringParam(input.database, 'database')
   if (!db.ok) return db
@@ -128,6 +132,37 @@ export async function runInspectIndexes(session: DbAiActiveSession, input: Inspe
         params: [db.value, table.value]
       })
       rows = result.rows
+    } else if (engine === 'sqlite') {
+      const databaseAlias = db.value || 'main'
+      executedSql = `PRAGMA ${quoteSqliteIdentifier(databaseAlias)}.index_list(${quoteSqliteIdentifier(table.value)})`
+      const list = await session.executeQuery(executedSql, {
+        maxRows: 1000,
+        timeoutMs: 15_000
+      })
+      const indexes: IndexInfo[] = []
+      for (const row of list.rows) {
+        const name = typeof row.name === 'string' ? row.name : ''
+        if (!name) continue
+        const infoSql = `PRAGMA ${quoteSqliteIdentifier(databaseAlias)}.index_info(${quoteSqliteIdentifier(name)})`
+        const info = await session.executeQuery(infoSql, { maxRows: 1000, timeoutMs: 15_000 })
+        indexes.push({
+          name,
+          columns: info.rows.map((r) => (typeof r.name === 'string' ? r.name : '')).filter(Boolean),
+          unique: Number(row.unique ?? 0) === 1,
+          primary: row.origin === 'pk',
+          method: 'btree'
+        })
+      }
+      return {
+        ok: true,
+        data: {
+          database: db.value,
+          schema: schema.value,
+          table: table.value,
+          executedSql,
+          indexes
+        }
+      }
     } else {
       executedSql = POSTGRES_INDEX_SQL
       const pgSchema = schema.value ?? 'public'

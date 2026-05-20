@@ -73,6 +73,22 @@ describe('dbMutationBuilder.buildMutations', () => {
     expect(stmts[0].params).toEqual([1, 'x', null])
   })
 
+  it('generates SQLite INSERT qualified by database alias with ? placeholders', () => {
+    const stmts = buildMutations({
+      dbType: 'sqlite',
+      database: 'main',
+      table: 'users',
+      primaryKey: ['id'],
+      newRows: [{ tmpId: 't1', values: { name: 'alice', age: 30 } }],
+      deletedRowKeys: [],
+      updatedCells: [],
+      originalRows: new Map(),
+      knownColumns: ['id', 'name', 'age']
+    })
+    expect(stmts[0].sql).toBe('INSERT INTO "main"."users" ("name", "age") VALUES (?, ?)')
+    expect(stmts[0].params).toEqual(['alice', 30])
+  })
+
   // ---- DELETE ----
 
   it('generates MySQL DELETE with pk WHERE', () => {
@@ -144,6 +160,23 @@ describe('dbMutationBuilder.buildMutations', () => {
     expect(stmts[0].params).toEqual([1, 2])
   })
 
+  it('DELETE with no primary key uses rowid subquery (SQLite)', () => {
+    const rowKey = '__no_pk__0'
+    const stmts = buildMutations({
+      dbType: 'sqlite',
+      database: 'main',
+      table: 't',
+      primaryKey: null,
+      newRows: [],
+      deletedRowKeys: [rowKey],
+      updatedCells: [],
+      originalRows: new Map([[rowKey, { a: 1, b: null }]]),
+      knownColumns: ['a', 'b']
+    })
+    expect(stmts[0].sql).toBe('DELETE FROM "main"."t" WHERE rowid = (SELECT rowid FROM "main"."t" WHERE "a" = ? AND "b" IS NULL LIMIT 1)')
+    expect(stmts[0].params).toEqual([1])
+  })
+
   // ---- UPDATE ----
 
   it('generates MySQL UPDATE with pk WHERE', () => {
@@ -195,6 +228,23 @@ describe('dbMutationBuilder.buildMutations', () => {
       knownColumns: ['a', 'b']
     })
     expect(stmts[0].sql).toBe('UPDATE "pub"."t" SET "a" = $1 WHERE ctid = (SELECT ctid FROM "pub"."t" WHERE "a" = $2 AND "b" = $3 LIMIT 1)')
+    expect(stmts[0].params).toEqual([99, 1, 'x'])
+  })
+
+  it('UPDATE with no primary key uses rowid subquery (SQLite)', () => {
+    const rowKey = '__no_pk__0'
+    const stmts = buildMutations({
+      dbType: 'sqlite',
+      database: 'main',
+      table: 't',
+      primaryKey: null,
+      newRows: [],
+      deletedRowKeys: [],
+      updatedCells: [[rowKey, { a: 99 }]],
+      originalRows: new Map([[rowKey, { a: 1, b: 'x' }]]),
+      knownColumns: ['a', 'b']
+    })
+    expect(stmts[0].sql).toBe('UPDATE "main"."t" SET "a" = ? WHERE rowid = (SELECT rowid FROM "main"."t" WHERE "a" = ? AND "b" = ? LIMIT 1)')
     expect(stmts[0].params).toEqual([99, 1, 'x'])
   })
 

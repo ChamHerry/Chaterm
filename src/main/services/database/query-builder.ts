@@ -10,7 +10,7 @@
  *   driver; unknown identifiers are refused.
  * - Filter/sort values are bound as parameters, never interpolated.
  * - Identifier quoting is dialect-aware (backticks for mysql, double quotes
- *   for postgres).
+ *   for postgres/sqlite).
  * - Free-form WHERE / ORDER BY expressions are deliberately concatenated
  *   verbatim. They are only invoked when the user pastes SQL fragments into
  *   the dedicated panels in the UI, and they win over structured column
@@ -35,11 +35,11 @@ export interface ColumnSort {
 }
 
 export interface QueryTableInput {
-  dbType: 'mysql' | 'postgresql'
+  dbType: 'mysql' | 'postgresql' | 'sqlite'
   database: string
   /**
    * Schema the table lives in. PG-only: used to emit "schema"."table"
-   * qualifiers. MySQL ignores it (no schema layer).
+   * qualifiers. MySQL/SQLite ignore it (SQLite uses database alias).
    */
   schema?: string
   table: string
@@ -70,19 +70,19 @@ function assertIdent(name: string, label: string): string {
   return name
 }
 
-function quoteIdent(name: string, dbType: 'mysql' | 'postgresql'): string {
+function quoteIdent(name: string, dbType: 'mysql' | 'postgresql' | 'sqlite'): string {
   if (dbType === 'mysql') return `\`${name}\``
   return `"${name}"`
 }
 
-function placeholder(dbType: 'mysql' | 'postgresql', index1Based: number): string {
+function placeholder(dbType: 'mysql' | 'postgresql' | 'sqlite', index1Based: number): string {
   return dbType === 'postgresql' ? `$${index1Based}` : '?'
 }
 
 function buildStructuredWhere(
   filters: ColumnFilter[],
   knownColumns: Set<string>,
-  dbType: 'mysql' | 'postgresql',
+  dbType: 'mysql' | 'postgresql' | 'sqlite',
   startIndex: number
 ): { sql: string; params: unknown[]; endIndex: number } {
   if (filters.length === 0) return { sql: '', params: [], endIndex: startIndex }
@@ -130,7 +130,7 @@ function buildStructuredWhere(
   return { sql: ` WHERE ${clauses.join(' AND ')}`, params, endIndex: index }
 }
 
-function buildStructuredOrderBy(sort: ColumnSort | null, knownColumns: Set<string>, dbType: 'mysql' | 'postgresql'): string {
+function buildStructuredOrderBy(sort: ColumnSort | null, knownColumns: Set<string>, dbType: 'mysql' | 'postgresql' | 'sqlite'): string {
   if (!sort) return ''
   if (!knownColumns.has(sort.column)) throw new Error(`unknown sort column: ${sort.column}`)
   assertIdent(sort.column, 'sort column')
@@ -141,7 +141,7 @@ function buildStructuredOrderBy(sort: ColumnSort | null, knownColumns: Set<strin
 function buildLimitOffset(
   page: number,
   pageSize: number,
-  dbType: 'mysql' | 'postgresql',
+  dbType: 'mysql' | 'postgresql' | 'sqlite',
   startIndex: number
 ): { sql: string; params: unknown[]; endIndex: number } {
   // Bounds: [10, 10000] matches the UI page-size selector.
@@ -152,7 +152,7 @@ function buildLimitOffset(
   // with mysql2's unprepared `query()` and even with `execute()` the server
   // requires they be literal integers in many server/client combinations.
   // We clamped both values above, so inlining is safe.
-  if (dbType === 'mysql') {
+  if (dbType === 'mysql' || dbType === 'sqlite') {
     return {
       sql: ` LIMIT ${safePageSize} OFFSET ${offset}`,
       params: [],
@@ -182,6 +182,10 @@ function qualifiedTable(input: Pick<QueryTableInput, 'dbType' | 'database' | 'sc
   if (dbType === 'postgresql' && schema) {
     assertIdent(schema, 'schema')
     return `${quoteIdent(schema, dbType)}.${quoteIdent(table, dbType)}`
+  }
+  if (dbType === 'sqlite' && database) {
+    assertIdent(database, 'database')
+    return `${quoteIdent(database, dbType)}.${quoteIdent(table, dbType)}`
   }
   return quoteIdent(table, dbType)
 }

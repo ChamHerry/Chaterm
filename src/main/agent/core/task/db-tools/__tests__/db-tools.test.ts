@@ -23,7 +23,7 @@ const { runSuggestIndexes, __testing: suggestTesting } = await import('../sugges
 // ---------------------------------------------------------------------------
 
 interface MockOverrides {
-  dbType?: 'mysql' | 'postgresql'
+  dbType?: 'mysql' | 'postgresql' | 'sqlite'
   databaseName?: string
   schemaName?: string
   databases?: string[]
@@ -141,6 +141,17 @@ describe('runListSchemas', () => {
       expect(r.data.note).toMatch(/mysql/i)
     }
   })
+
+  it('returns an empty list with an alias note on SQLite', async () => {
+    const session = makeSession({ dbType: 'sqlite', databaseName: 'main', schemas: [] })
+    const r = await runListSchemas(session, {})
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.schemas).toEqual([])
+      expect(r.data.note).toMatch(/sqlite/i)
+      expect(r.data.note).toMatch(/alias/i)
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -185,6 +196,13 @@ describe('runListTables', () => {
     const session = makeSession({ dbType: 'mysql', schemas: [], tables: ['t1'] })
     const r = await runListTables(session, { database: 'appdb' })
     expect(r.ok).toBe(true)
+  })
+
+  it('accepts SQLite database alias without schema', async () => {
+    const session = makeSession({ dbType: 'sqlite', databaseName: 'main', schemas: [], tables: ['orders'] })
+    const r = await runListTables(session, { database: 'main' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.tables).toEqual(['orders'])
   })
 })
 
@@ -270,6 +288,35 @@ describe('runInspectIndexes', () => {
     const out = inspectTesting.aggregateRows(rows, 'postgresql')
     expect(out).toEqual([{ name: 'orders_pkey', columns: ['id'], unique: true, primary: true, method: 'btree' }])
   })
+
+  it('lists SQLite indexes via pragma metadata', async () => {
+    const executed: string[] = []
+    const session = makeSession({
+      dbType: 'sqlite',
+      databaseName: 'main',
+      schemas: [],
+      async execute(sql) {
+        executed.push(sql)
+        if (sql.includes('index_list')) {
+          return {
+            columns: ['name', 'unique', 'origin'],
+            rows: [{ name: 'idx_orders_user', unique: 1, origin: 'c' }],
+            rowCount: 1,
+            truncated: false,
+            durationMs: 0
+          }
+        }
+        return { columns: ['name'], rows: [{ name: 'user_id' }, { name: 'created_at' }], rowCount: 2, truncated: false, durationMs: 0 }
+      }
+    } as MockOverrides)
+    const r = await runInspectIndexes(session, { database: 'main', table: 'orders' })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.indexes).toEqual([{ name: 'idx_orders_user', columns: ['user_id', 'created_at'], unique: true, primary: false, method: 'btree' }])
+    }
+    expect(executed[0]).toContain('PRAGMA "main".index_list')
+    expect(executed[1]).toContain('PRAGMA "main".index_info')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -340,6 +387,21 @@ describe('runSampleRows', () => {
     expect(captured).toContain('`appdb`.`orders`')
     expect(captured).toMatch(/LIMIT 3$/)
   })
+
+  it('SQLite uses database alias qualification with double quotes', async () => {
+    let captured = ''
+    const session = makeSession({
+      dbType: 'sqlite',
+      schemas: [],
+      async execute(sql) {
+        captured = sql
+        return { columns: [], rows: [], rowCount: 0, truncated: false, durationMs: 0 }
+      }
+    } as MockOverrides)
+    await runSampleRows(session, { database: 'main', table: 'orders', limit: 3 })
+    expect(captured).toContain('"main"."orders"')
+    expect(captured).toMatch(/LIMIT 3$/)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -397,6 +459,26 @@ describe('runCountRows', () => {
     expect(capturedSql).toContain('COUNT(*)')
   })
 
+  it('runs exact COUNT(*) for SQLite even when exact is omitted', async () => {
+    let capturedSql = ''
+    const session = makeSession({
+      dbType: 'sqlite',
+      schemas: [],
+      async execute(sql) {
+        capturedSql = sql
+        return { columns: ['n'], rows: [{ n: 7 }], rowCount: 1, truncated: false, durationMs: 0 }
+      }
+    } as MockOverrides)
+    const r = await runCountRows(session, { database: 'main', table: 'orders' })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.approximate).toBe(false)
+      expect(r.data.count).toBe(7)
+    }
+    expect(capturedSql).toContain('COUNT(*)')
+    expect(capturedSql).toContain('"main"."orders"')
+  })
+
   it('toNonNegativeInt coerces numeric strings and caps negatives at 0', () => {
     expect(countTesting.toNonNegativeInt('42')).toBe(42)
     expect(countTesting.toNonNegativeInt(-7)).toBe(0)
@@ -449,6 +531,21 @@ describe('runExplainPlan', () => {
     const r = await runExplainPlan(session, { sql: 'SELECT * FROM t' })
     expect(r.ok).toBe(true)
     expect(captured).toMatch(/^EXPLAIN \(FORMAT JSON\) /)
+  })
+
+  it('accepts a plain SELECT and prefixes EXPLAIN QUERY PLAN on SQLite', async () => {
+    let captured = ''
+    const session = makeSession({
+      dbType: 'sqlite',
+      schemas: [],
+      async execute(sql) {
+        captured = sql
+        return { columns: ['detail'], rows: [{ detail: 'SCAN t' }], rowCount: 1, truncated: false, durationMs: 0 }
+      }
+    } as MockOverrides)
+    const r = await runExplainPlan(session, { sql: 'SELECT * FROM t' })
+    expect(r.ok).toBe(true)
+    expect(captured).toMatch(/^EXPLAIN QUERY PLAN /)
   })
 
   it('rejects SQL exceeding the 50KB cap', async () => {

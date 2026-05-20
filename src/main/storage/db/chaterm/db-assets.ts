@@ -5,9 +5,10 @@ import Database from 'better-sqlite3'
 import { randomUUID } from 'crypto'
 const logger = createLogger('db')
 
-export type DbAssetType = 'mysql' | 'postgresql'
+export type DbAssetType = 'mysql' | 'postgresql' | 'sqlite'
 export type DbAssetStatus = 'idle' | 'testing' | 'connected' | 'failed'
 export type DbAssetAuthType = 'password'
+export type DbAssetConnectionMode = 'readwrite' | 'readonly'
 
 export interface DbAssetRecord {
   id: string
@@ -17,8 +18,10 @@ export interface DbAssetRecord {
   group_name: string | null
   db_type: DbAssetType
   environment: string | null
-  host: string
-  port: number
+  host: string | null
+  port: number | null
+  file_path: string | null
+  connection_mode: DbAssetConnectionMode | null
   database_name: string | null
   schema_name: string | null
   auth_type: DbAssetAuthType
@@ -57,8 +60,10 @@ export interface DbAssetGroupRecord {
 export interface DbAssetCreateInput {
   name: string
   db_type: DbAssetType
-  host: string
-  port: number
+  host?: string | null
+  port?: number | null
+  file_path?: string | null
+  connection_mode?: DbAssetConnectionMode | null
   group_id?: string | null
   username?: string | null
   password_ciphertext?: string | null
@@ -88,6 +93,7 @@ export type DbAssetGroupUpdateInput = Partial<DbAssetGroupCreateInput>
 
 const ALL_COLUMNS = `
   id, user_id, name, group_id, group_name, db_type, environment, host, port,
+  file_path, connection_mode,
   database_name, schema_name, auth_type, username, password_ciphertext,
   ssl_mode, jdbc_url, driver_name, driver_class_name,
   ssh_tunnel_enabled, ssh_tunnel_asset_uuid, options_json, tags_json,
@@ -130,6 +136,22 @@ function resolveAssetGroupFields(
   return {
     group_id: null,
     group_name: input.group_name ?? null
+  }
+}
+
+function normalizeConnectionMode(mode: DbAssetConnectionMode | null | undefined): DbAssetConnectionMode {
+  return mode === 'readonly' ? 'readonly' : 'readwrite'
+}
+
+function validateDbAssetInput(input: Pick<DbAssetCreateInput, 'db_type' | 'host' | 'port' | 'file_path'>): void {
+  if (!input.db_type) throw new Error('db_type is required')
+  if (input.db_type === 'sqlite') {
+    if (!input.file_path?.trim()) throw new Error('file_path is required')
+    return
+  }
+  if (!input.host?.trim()) throw new Error('host is required')
+  if (!Number.isFinite(input.port) || Number(input.port) <= 0 || Number(input.port) > 65535) {
+    throw new Error('port must be 1..65535')
   }
 }
 
@@ -280,23 +302,21 @@ export function getDbAssetLogic(db: Database.Database, userId: number, id: strin
  */
 export function createDbAssetLogic(db: Database.Database, userId: number, input: DbAssetCreateInput): DbAssetRecord {
   if (!input.name?.trim()) throw new Error('name is required')
-  if (!input.db_type) throw new Error('db_type is required')
-  if (!input.host?.trim()) throw new Error('host is required')
-  if (!Number.isFinite(input.port) || input.port <= 0 || input.port > 65535) {
-    throw new Error('port must be 1..65535')
-  }
+  validateDbAssetInput(input)
 
   const id = randomUUID()
   const ts = nowIso()
   const stmt = db.prepare(`
     INSERT INTO db_assets (
       id, user_id, name, group_id, group_name, db_type, environment, host, port,
+      file_path, connection_mode,
       database_name, schema_name, auth_type, username, password_ciphertext,
       ssl_mode, jdbc_url, driver_name, driver_class_name,
       ssh_tunnel_enabled, ssh_tunnel_asset_uuid, options_json, tags_json,
       status, sort_order, created_at, updated_at
     ) VALUES (
       @id, @user_id, @name, @group_id, @group_name, @db_type, @environment, @host, @port,
+      @file_path, @connection_mode,
       @database_name, @schema_name, @auth_type, @username, @password_ciphertext,
       @ssl_mode, @jdbc_url, @driver_name, @driver_class_name,
       0, NULL, @options_json, @tags_json,
@@ -312,8 +332,10 @@ export function createDbAssetLogic(db: Database.Database, userId: number, input:
     group_name: group.group_name,
     db_type: input.db_type,
     environment: input.environment ?? null,
-    host: input.host.trim(),
-    port: input.port,
+    host: input.db_type === 'sqlite' ? null : (input.host ?? '').trim(),
+    port: input.db_type === 'sqlite' ? null : Number(input.port),
+    file_path: input.db_type === 'sqlite' ? input.file_path!.trim() : null,
+    connection_mode: input.db_type === 'sqlite' ? normalizeConnectionMode(input.connection_mode) : null,
     database_name: input.database_name ?? null,
     schema_name: input.schema_name ?? null,
     auth_type: input.auth_type ?? 'password',
@@ -348,6 +370,7 @@ export function updateDbAssetLogic(db: Database.Database, userId: number, id: st
     ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
   } as DbAssetRecord
   merged.updated_at = nowIso()
+  validateDbAssetInput(merged)
 
   const stmt = db.prepare(`
     UPDATE db_assets SET
@@ -358,6 +381,8 @@ export function updateDbAssetLogic(db: Database.Database, userId: number, id: st
       environment = @environment,
       host = @host,
       port = @port,
+      file_path = @file_path,
+      connection_mode = @connection_mode,
       database_name = @database_name,
       schema_name = @schema_name,
       auth_type = @auth_type,
@@ -381,8 +406,10 @@ export function updateDbAssetLogic(db: Database.Database, userId: number, id: st
     group_name: merged.group_name,
     db_type: merged.db_type,
     environment: merged.environment,
-    host: merged.host,
-    port: merged.port,
+    host: merged.db_type === 'sqlite' ? null : merged.host,
+    port: merged.db_type === 'sqlite' ? null : merged.port,
+    file_path: merged.db_type === 'sqlite' ? (merged.file_path?.trim() ?? null) : null,
+    connection_mode: merged.db_type === 'sqlite' ? normalizeConnectionMode(merged.connection_mode) : null,
     database_name: merged.database_name,
     schema_name: merged.schema_name,
     auth_type: merged.auth_type,

@@ -5,12 +5,14 @@ import type { DbAssetType } from '../../storage/db/chaterm/db-assets'
 
 export interface ResolvedDbCredential {
   dbType: DbAssetType
-  host: string
-  port: number
+  host: string | null
+  port: number | null
   username: string | null
   password: string | null
   database: string | null
   sslMode: string | null
+  filePath?: string | null
+  connectionMode?: 'readwrite' | 'readonly' | null
   options?: Record<string, unknown> | null
 }
 

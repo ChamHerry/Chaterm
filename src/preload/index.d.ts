@@ -14,9 +14,11 @@ interface Cookie {
 
 export interface DbAssetPayload {
   name: string
-  db_type: 'mysql' | 'postgresql'
-  host: string
-  port: number
+  db_type: 'mysql' | 'postgresql' | 'sqlite'
+  host?: string | null
+  port?: number | null
+  file_path?: string | null
+  connection_mode?: 'readwrite' | 'readonly' | null
   group_id?: string | null
   username?: string | null
   password?: string | null
@@ -35,10 +37,12 @@ export interface DbAssetDto {
   name: string
   group_id: string | null
   group_name: string | null
-  db_type: 'mysql' | 'postgresql'
+  db_type: 'mysql' | 'postgresql' | 'sqlite'
   environment: string | null
-  host: string
-  port: number
+  host: string | null
+  port: number | null
+  file_path: string | null
+  connection_mode: 'readwrite' | 'readonly' | null
   database_name: string | null
   schema_name: string | null
   auth_type: string
@@ -586,7 +590,7 @@ interface ApiType {
       workspace: 'server' | 'database'
       dbContext?: {
         assetId?: string
-        dbType?: 'mysql' | 'postgresql'
+        dbType?: 'mysql' | 'postgresql' | 'sqlite'
         databaseName?: string
         schemaName?: string
         assetName?: string

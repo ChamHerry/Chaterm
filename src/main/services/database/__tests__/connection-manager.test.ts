@@ -19,6 +19,8 @@ function makeAsset(overrides: Partial<DbAssetRecord> = {}): DbAssetRecord {
     environment: null,
     host: 'h',
     port: 3306,
+    file_path: null,
+    connection_mode: null,
     database_name: null,
     schema_name: null,
     auth_type: 'password',
@@ -67,7 +69,7 @@ function makeHarness(opts: {
     listTables: opts.listTables ? vi.fn(opts.listTables) : undefined
   }
   const mgr = new ConnectionManager({
-    adapters: { mysql: adapter, postgresql: adapter },
+    adapters: { mysql: adapter, postgresql: adapter, sqlite: adapter },
     credentialResolver: { decryptSecret },
     statusUpdater
   })
@@ -202,6 +204,22 @@ describe('ConnectionManager', () => {
     const callArg = (adapter.testConnection as ReturnType<typeof vi.fn>).mock.calls[0][0] as ResolvedDbCredential
     expect(callArg.password).toBeNull()
   })
+
+  it('passes sqlite file credentials to the adapter', async () => {
+    const { mgr, adapter } = makeHarness({})
+    await mgr.testConnection(
+      makeAsset({
+        db_type: 'sqlite',
+        host: null,
+        port: null,
+        file_path: '/tmp/app.sqlite3',
+        connection_mode: 'readonly',
+        password_ciphertext: null
+      })
+    )
+    const callArg = (adapter.testConnection as ReturnType<typeof vi.fn>).mock.calls[0][0] as ResolvedDbCredential
+    expect(callArg).toMatchObject({ dbType: 'sqlite', host: null, port: null, filePath: '/tmp/app.sqlite3', connectionMode: 'readonly' })
+  })
 })
 
 describe('ConnectionManager - detectPrimaryKey / executeMutations', () => {
@@ -223,7 +241,7 @@ describe('ConnectionManager - detectPrimaryKey / executeMutations', () => {
       detectPrimaryKey
     }
     const mgr = new ConnectionManager({
-      adapters: { mysql: adapter, postgresql: adapter },
+      adapters: { mysql: adapter, postgresql: adapter, sqlite: adapter },
       credentialResolver: { decryptSecret: async () => '' },
       statusUpdater
     })
@@ -291,7 +309,7 @@ describe('ConnectionManager - detectPrimaryKey / executeMutations', () => {
       disconnect: async () => {}
     }
     const mgr = new ConnectionManager({
-      adapters: { mysql: noTxAdapter, postgresql: noTxAdapter },
+      adapters: { mysql: noTxAdapter, postgresql: noTxAdapter, sqlite: noTxAdapter },
       credentialResolver: { decryptSecret: async () => '' },
       statusUpdater
     })

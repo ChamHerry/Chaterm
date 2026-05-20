@@ -1757,6 +1757,9 @@ export default {
       user: '用户',
       password: '密码',
       database: '数据库',
+      filePath: '数据库文件',
+      readonly: '只读',
+      readonlyHint: '以只读模式打开',
       url: 'URL',
       sslMode: 'SSL 模式'
     },

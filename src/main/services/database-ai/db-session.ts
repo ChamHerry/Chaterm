@@ -18,6 +18,7 @@ import { getConnectionManager, getCredentialStore } from '../database'
 import { ChatermDatabaseService } from '../../storage/db/chaterm.service'
 import { MysqlDriverAdapter, fetchMysqlTableDdl } from '../database/drivers/mysql-driver'
 import { PostgresDriverAdapter, fetchPostgresTableDdl } from '../database/drivers/postgres-driver'
+import { SqliteDriverAdapter, fetchSqliteTableDdl } from '../database/drivers/sqlite-driver'
 import { randomUUID } from 'crypto'
 import type { BoundedQueryResult, ColumnInfo, DbAiActiveSession, DbAiSessionOwner, ExecuteQueryOptions, MetadataFetchOptions } from './types'
 import { DbAiMetadataCache, TTL_DEFAULT_MS, type ColumnInfoCacheValue } from './metadata-cache'
@@ -79,7 +80,8 @@ function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout?: 
  */
 const ADAPTERS: Record<DbAssetType, DatabaseDriverAdapter> = {
   mysql: new MysqlDriverAdapter(),
-  postgresql: new PostgresDriverAdapter()
+  postgresql: new PostgresDriverAdapter(),
+  sqlite: new SqliteDriverAdapter()
 }
 
 /**
@@ -120,7 +122,9 @@ async function resolveCredential(assetId: string): Promise<{ asset: DbAssetType;
     username: asset.username,
     password,
     database: asset.database_name,
-    sslMode: asset.ssl_mode
+    sslMode: asset.ssl_mode,
+    filePath: asset.file_path,
+    connectionMode: asset.connection_mode
   }
   return { asset: asset.db_type, credential }
 }
@@ -228,6 +232,9 @@ function buildSession(input: {
         // PG requires schema; default to `public` when caller omits it, matching
         // the existing UI fallback. Caller SHOULD supply schema explicitly.
         return fetchPostgresTableDdl(handle, db, schema ?? 'public', table)
+      }
+      if (dbType === 'sqlite') {
+        return fetchSqliteTableDdl(handle, db || 'main', table)
       }
       return fetchMysqlTableDdl(handle, db, table)
     },

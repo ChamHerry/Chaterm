@@ -9,6 +9,7 @@
  * Placeholder style is dialect-specific:
  *   - MySQL:       `?` positional placeholders
  *   - PostgreSQL:  `$1`, `$2`, ... positional placeholders
+ *   - SQLite:      `?` positional placeholders
  *
  * Identifiers (table, column, database, primary-key names) are NEVER
  * parameterized — the SQL dialect forbids it. We therefore require every
@@ -17,7 +18,7 @@
  * can surface it to the user rather than ship a malformed statement.
  */
 
-export type DbDialect = 'mysql' | 'postgresql'
+export type DbDialect = 'mysql' | 'postgresql' | 'sqlite'
 
 export interface BuildMutationsArgs {
   dbType: DbDialect
@@ -54,7 +55,7 @@ function assertIdent(label: string, value: string): void {
 }
 
 // Quote an identifier for the target dialect. `table`.`col` in MySQL,
-// "table"."col" in PostgreSQL. Identifiers must be pre-validated.
+// "table"."col" in PostgreSQL/SQLite. Identifiers must be pre-validated.
 function quoteIdent(dialect: DbDialect, ident: string): string {
   return dialect === 'mysql' ? `\`${ident}\`` : `"${ident}"`
 }
@@ -63,6 +64,7 @@ function quoteIdent(dialect: DbDialect, ident: string): string {
  * Build the dialect-correct table reference.
  *
  * - MySQL has no schema layer, so we qualify with the database: `db`.`tbl`.
+ * - SQLite's database is the attached alias (`main`, `temp`, or ATTACH name).
  * - PostgreSQL connections are already bound to one database, so we cannot
  *   cross-qualify with the database name. Instead, when a schema is known
  *   we emit `"schema"."table"`; otherwise we fall back to bare `"table"`
@@ -70,6 +72,9 @@ function quoteIdent(dialect: DbDialect, ident: string): string {
  */
 function qualifiedTable(dialect: DbDialect, database: string, schema: string | undefined, table: string): string {
   if (dialect === 'mysql') {
+    return `${quoteIdent(dialect, database)}.${quoteIdent(dialect, table)}`
+  }
+  if (dialect === 'sqlite') {
     return `${quoteIdent(dialect, database)}.${quoteIdent(dialect, table)}`
   }
   if (schema) {
@@ -86,7 +91,7 @@ function makePlaceholder(dialect: DbDialect): () => string {
   let n = 0
   return () => {
     n += 1
-    return dialect === 'mysql' ? '?' : `$${n}`
+    return dialect === 'postgresql' ? `$${n}` : '?'
   }
 }
 
@@ -181,13 +186,16 @@ function buildDeleteStatement(
 
   // No-primary-key fallbacks need a single-row guard. MySQL supports
   // `LIMIT 1` directly on DELETE. PostgreSQL doesn't allow LIMIT on DELETE,
-  // so we route through `ctid` which uniquely identifies a physical tuple.
+  // so we route through `ctid`. SQLite uses `rowid` for ordinary rowid
+  // tables; WITHOUT ROWID tables without a PK remain outside this fallback.
   const hasPk = !!pk && pk.length > 0
   let sql: string
   if (hasPk) {
     sql = `DELETE FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where}`
   } else if (dialect === 'mysql') {
     sql = `DELETE FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1`
+  } else if (dialect === 'sqlite') {
+    sql = `DELETE FROM ${qualifiedTable(dialect, database, schema, table)} WHERE rowid = (SELECT rowid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
   } else {
     sql = `DELETE FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ctid = (SELECT ctid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
   }
@@ -250,6 +258,8 @@ function buildUpdateStatement(
     sql = `UPDATE ${qualifiedTable(dialect, database, schema, table)} SET ${setParts.join(', ')} WHERE ${where}`
   } else if (dialect === 'mysql') {
     sql = `UPDATE ${qualifiedTable(dialect, database, schema, table)} SET ${setParts.join(', ')} WHERE ${where} LIMIT 1`
+  } else if (dialect === 'sqlite') {
+    sql = `UPDATE ${qualifiedTable(dialect, database, schema, table)} SET ${setParts.join(', ')} WHERE rowid = (SELECT rowid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
   } else {
     sql = `UPDATE ${qualifiedTable(dialect, database, schema, table)} SET ${setParts.join(', ')} WHERE ctid = (SELECT ctid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
   }

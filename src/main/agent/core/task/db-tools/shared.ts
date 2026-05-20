@@ -106,12 +106,16 @@ export function quoteIdentifier(dialect: SqlDialect, ident: string): string {
 /**
  * Fully-qualified table reference used inside sample-rows / count-rows.
  * PG prefers "schema"."table"; MySQL prefers `database`.`table` with the
- * database name taking the schema slot.
+ * database name taking the schema slot. SQLite treats database as the
+ * attached database alias (`main`, `temp`, or ATTACH name).
  */
 export function qualifiedTableName(dialect: SqlDialect, parts: { database: string; schema?: string; table: string }): string {
   if (dialect === 'postgresql') {
     const schema = parts.schema ?? 'public'
     return `${quoteIdentifier(dialect, schema)}.${quoteIdentifier(dialect, parts.table)}`
+  }
+  if (dialect === 'sqlite') {
+    return `${quoteIdentifier(dialect, parts.database || 'main')}.${quoteIdentifier(dialect, parts.table)}`
   }
   return `${quoteIdentifier(dialect, parts.database)}.${quoteIdentifier(dialect, parts.table)}`
 }

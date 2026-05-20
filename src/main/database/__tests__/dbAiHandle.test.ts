@@ -36,4 +36,19 @@ describe('dbAiHandle validateRequest', () => {
 
     expect(result).toEqual({ ok: false, errorMessage: 'input.errorMessage too large or invalid' })
   })
+
+  it('accepts sqlite context and sqlite target dialect', () => {
+    const result = __testing.validateRequest(
+      validDiagnoseRequest({
+        context: { assetId: 'asset-1', dbType: 'sqlite', databaseName: 'main' },
+        input: { sql: 'select * from users', errorMessage: 'no such table', targetDialect: 'sqlite' }
+      })
+    )
+
+    expect(result).toMatchObject({ ok: true })
+    if (result.ok) {
+      expect(result.req.context.dbType).toBe('sqlite')
+      expect(result.req.input.targetDialect).toBe('sqlite')
+    }
+  })
 })

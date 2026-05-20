@@ -53,7 +53,9 @@ async function resolveCredential(asset: DbAssetRecord, resolver: CredentialResol
     username: asset.username,
     password,
     database: asset.database_name,
-    sslMode: asset.ssl_mode
+    sslMode: asset.ssl_mode,
+    filePath: asset.file_path,
+    connectionMode: asset.connection_mode
   }
 }
 

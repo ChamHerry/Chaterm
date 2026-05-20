@@ -51,6 +51,23 @@ describe('buildTableQuery', () => {
     expect(q.sql.startsWith('SELECT * FROM "users"')).toBe(true)
   })
 
+  it('qualifies sqlite tables with the database alias and inlined pagination', () => {
+    const q = buildTableQuery({
+      dbType: 'sqlite',
+      database: 'main',
+      table: 'users',
+      knownColumns: KNOWN,
+      filters: [{ column: 'name', operator: 'like', value: 'a%' }],
+      sort: { column: 'id', direction: 'asc' },
+      page: 2,
+      pageSize: 25
+    })
+    expect(q.sql).toBe('SELECT * FROM "main"."users" WHERE "name" LIKE ? ORDER BY "id" ASC LIMIT 25 OFFSET 25')
+    expect(q.params).toEqual(['a%'])
+    expect(q.countSql).toBe('SELECT COUNT(*) AS total FROM "main"."users" WHERE "name" LIKE ?')
+    expect(q.countParams).toEqual(['a%'])
+  })
+
   it('supports multiple structured filters with AND', () => {
     const q = buildTableQuery({
       dbType: 'mysql',

@@ -1775,6 +1775,9 @@ export default {
       user: 'User',
       password: 'Password',
       database: 'Database',
+      filePath: 'Database File',
+      readonly: 'Read only',
+      readonlyHint: 'Open without write permission',
       url: 'URL',
       sslMode: 'SSL Mode'
     },

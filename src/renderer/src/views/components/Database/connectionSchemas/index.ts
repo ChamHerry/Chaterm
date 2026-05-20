@@ -6,8 +6,9 @@
 import type { DatabaseType } from '../types'
 import { mysqlConnectionSchema } from './mysql'
 import { postgresqlConnectionSchema } from './postgresql'
+import { sqliteConnectionSchema } from './sqlite'
 
-export type ConnectionFieldKind = 'text' | 'password' | 'number' | 'select'
+export type ConnectionFieldKind = 'text' | 'password' | 'number' | 'select' | 'checkbox'
 
 export interface ConnectionSelectOption {
   value: string
@@ -16,7 +17,7 @@ export interface ConnectionSelectOption {
 
 export interface ConnectionField {
   // Draft property this field writes to.
-  key: 'name' | 'host' | 'port' | 'user' | 'password' | 'database' | 'url' | 'sslMode'
+  key: 'name' | 'host' | 'port' | 'user' | 'password' | 'database' | 'filePath' | 'readonly' | 'url' | 'sslMode'
   kind: ConnectionFieldKind
   // i18n key for the field label (resolved by the modal via $t()).
   labelKey: string
@@ -34,7 +35,8 @@ export interface DbConnectionSchema {
 
 const SCHEMAS: Partial<Record<DatabaseType, DbConnectionSchema>> = {
   MySQL: mysqlConnectionSchema,
-  PostgreSQL: postgresqlConnectionSchema
+  PostgreSQL: postgresqlConnectionSchema,
+  SQLite: sqliteConnectionSchema
 }
 
 export function getConnectionSchema(dbType: DatabaseType): DbConnectionSchema | null {

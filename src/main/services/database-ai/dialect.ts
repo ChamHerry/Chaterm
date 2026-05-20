@@ -20,6 +20,11 @@ const DIALECT_TABLE: Record<SqlDialect, DialectInfo> = {
     dialect: 'postgresql',
     displayName: 'PostgreSQL',
     identifierQuote: '"'
+  },
+  sqlite: {
+    dialect: 'sqlite',
+    displayName: 'SQLite',
+    identifierQuote: '"'
   }
 }
 
@@ -46,6 +51,7 @@ export function normalizeDialect(candidate: unknown): SqlDialect | null {
   const lower = candidate.toLowerCase()
   if (lower === 'mysql') return 'mysql'
   if (lower === 'postgres' || lower === 'postgresql' || lower === 'pg') return 'postgresql'
+  if (lower === 'sqlite' || lower === 'sqlite3') return 'sqlite'
   return null
 }
 
@@ -59,5 +65,5 @@ export function isDifferentDialect(source: SqlDialect, target: SqlDialect): bool
 
 /** Enumerate all supported dialects; order is stable for UI pickers. */
 export function allDialects(): SqlDialect[] {
-  return ['mysql', 'postgresql']
+  return ['mysql', 'postgresql', 'sqlite']
 }

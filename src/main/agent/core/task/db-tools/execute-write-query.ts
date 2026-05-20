@@ -16,7 +16,7 @@ export interface ExecuteWriteQueryInput {
 }
 
 export interface ExecuteWriteQueryResult {
-  engine: 'mysql' | 'postgresql'
+  engine: 'mysql' | 'postgresql' | 'sqlite'
   executedSql: string
   columns: string[]
   rows: Array<Record<string, unknown>>

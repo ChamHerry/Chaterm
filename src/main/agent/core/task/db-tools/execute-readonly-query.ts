@@ -16,7 +16,7 @@ export interface ExecuteReadonlyQueryInput {
 }
 
 export interface ExecuteReadonlyQueryResult {
-  engine: 'mysql' | 'postgresql'
+  engine: 'mysql' | 'postgresql' | 'sqlite'
   executedSql: string
   columns: string[]
   rows: Array<Record<string, unknown>>

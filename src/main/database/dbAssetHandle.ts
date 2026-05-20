@@ -10,6 +10,7 @@ import type { ConnectionTestResult, DbObjectKind, MutationStatement } from '../s
 import { buildTableQuery, type ColumnFilter, type ColumnSort } from '../services/database/query-builder'
 import { fetchPostgresTableDdl } from '../services/database/drivers/postgres-driver'
 import { fetchMysqlTableDdl } from '../services/database/drivers/mysql-driver'
+import { fetchSqliteTableDdl } from '../services/database/drivers/sqlite-driver'
 
 const logger = createLogger('db')
 
@@ -21,9 +22,11 @@ const logger = createLogger('db')
  */
 interface RendererDbAssetPayload {
   name: string
-  db_type: 'mysql' | 'postgresql'
-  host: string
-  port: number
+  db_type: 'mysql' | 'postgresql' | 'sqlite'
+  host?: string | null
+  port?: number | null
+  file_path?: string | null
+  connection_mode?: 'readwrite' | 'readonly' | null
   group_id?: string | null
   username?: string | null
   password?: string | null
@@ -53,10 +56,12 @@ export interface DbAssetDto {
   name: string
   group_id: string | null
   group_name: string | null
-  db_type: 'mysql' | 'postgresql'
+  db_type: 'mysql' | 'postgresql' | 'sqlite'
   environment: string | null
-  host: string
-  port: number
+  host: string | null
+  port: number | null
+  file_path: string | null
+  connection_mode: 'readwrite' | 'readonly' | null
   database_name: string | null
   schema_name: string | null
   auth_type: string
@@ -92,6 +97,8 @@ function toDto(record: DbAssetRecord): DbAssetDto {
     environment: record.environment,
     host: record.host,
     port: record.port,
+    file_path: record.file_path,
+    connection_mode: record.connection_mode,
     database_name: record.database_name,
     schema_name: record.schema_name,
     auth_type: record.auth_type,
@@ -130,15 +137,17 @@ async function toCreateInput(payload: RendererDbAssetPayload): Promise<DbAssetCr
   return {
     name: payload.name,
     db_type: payload.db_type,
-    host: payload.host,
-    port: payload.port,
+    host: payload.db_type === 'sqlite' ? null : (payload.host ?? null),
+    port: payload.db_type === 'sqlite' ? null : (payload.port ?? null),
+    file_path: payload.file_path ?? null,
+    connection_mode: payload.connection_mode ?? (payload.db_type === 'sqlite' ? 'readwrite' : null),
     group_id: payload.group_id ?? null,
     username: payload.username ?? null,
     password_ciphertext: cipher,
     auth_type: 'password',
     group_name: payload.group_name ?? null,
     environment: payload.environment ?? null,
-    database_name: payload.database_name ?? null,
+    database_name: payload.database_name ?? (payload.db_type === 'sqlite' ? 'main' : null),
     schema_name: payload.schema_name ?? null,
     ssl_mode: payload.ssl_mode ?? null,
     jdbc_url: payload.jdbc_url ?? null,
@@ -161,6 +170,8 @@ async function toUpdatePatch(payload: Partial<RendererDbAssetPayload>): Promise<
   if (payload.db_type !== undefined) patch.db_type = payload.db_type
   if (payload.host !== undefined) patch.host = payload.host
   if (payload.port !== undefined) patch.port = payload.port
+  if (payload.file_path !== undefined) patch.file_path = payload.file_path
+  if (payload.connection_mode !== undefined) patch.connection_mode = payload.connection_mode
   if (payload.group_id !== undefined) patch.group_id = payload.group_id
   if (payload.username !== undefined) patch.username = payload.username
   if (payload.group_name !== undefined) patch.group_name = payload.group_name
@@ -309,9 +320,11 @@ export function registerDbAssetHandlers(): void {
         group_name: null,
         db_type: payload.db_type,
         environment: null,
-        host: payload.host,
-        port: payload.port,
-        database_name: payload.database_name ?? null,
+        host: payload.host ?? null,
+        port: payload.port ?? null,
+        file_path: payload.file_path ?? null,
+        connection_mode: payload.connection_mode ?? (payload.db_type === 'sqlite' ? 'readwrite' : null),
+        database_name: payload.database_name ?? (payload.db_type === 'sqlite' ? 'main' : null),
         schema_name: null,
         auth_type: 'password',
         username: payload.username ?? null,
@@ -663,6 +676,16 @@ export function registerDbAssetHandlers(): void {
           const values = (res.rows ?? []).map((r) => r.v ?? null)
           return { ok: true, values }
         }
+        if (asset.db_type === 'sqlite') {
+          if (payload.database && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(payload.database)) {
+            return { ok: false, errorMessage: 'unsafe database name' }
+          }
+          const database = payload.database || 'main'
+          const sql = `SELECT DISTINCT "${payload.column}" AS v FROM "${database}"."${payload.table}" ORDER BY 1 LIMIT ${limit}`
+          const res = await mgr.executeQuery(payload.id, sql)
+          const values = (res.rows ?? []).map((r) => r.v ?? null)
+          return { ok: true, values }
+        }
         // postgres: schema-qualify when known so non-public tables resolve.
         const qualified = payload.schema ? `"${payload.schema}"."${payload.table}"` : `"${payload.table}"`
         const sql = `SELECT DISTINCT "${payload.column}" AS v FROM ${qualified} ORDER BY 1 LIMIT ${limit}`
@@ -778,6 +801,8 @@ export function registerDbAssetHandlers(): void {
         ddl = await fetchPostgresTableDdl(session.handle, payload.database, schema, payload.table)
       } else if (asset.db_type === 'mysql') {
         ddl = await fetchMysqlTableDdl(session.handle, payload.database, payload.table)
+      } else if (asset.db_type === 'sqlite') {
+        ddl = await fetchSqliteTableDdl(session.handle, payload.database || 'main', payload.table)
       } else {
         return { ok: false, errorCode: 'other', errorMessage: `unsupported db_type: ${asset.db_type}` }
       }
