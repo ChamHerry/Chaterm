@@ -324,6 +324,16 @@ function findDatabaseAncestor(nodes: DatabaseTreeNode[], startId: string): Datab
   return null
 }
 
+function findSchemaAncestor(nodes: DatabaseTreeNode[], startId: string): DatabaseTreeNode | null {
+  let current = findNode(nodes, startId)
+  while (current) {
+    if (current.type === 'schema') return current
+    const parentId = current.parentId
+    current = parentId ? findNode(nodes, parentId) : null
+  }
+  return null
+}
+
 function filterTree(nodes: DatabaseTreeNode[], keyword: string): DatabaseTreeNode[] {
   const trimmed = keyword.trim().toLowerCase()
   if (!trimmed) return nodes
@@ -598,20 +608,24 @@ export const useDatabaseWorkspaceStore = defineStore('databaseWorkspace', {
       let assetId: string | undefined
       let databaseName: string | undefined
       let connectionId: string | undefined
+      let schemaName: string | undefined
       const active = this.activeTab
       const inheritedFromActive = !!(active && active.kind !== 'overview')
       if (inheritedFromActive) {
         assetId = active!.assetId
         databaseName = active!.databaseName
         connectionId = active!.connectionId
+        schemaName = active!.schemaName ?? pickDefaultSchema(this.tree, assetId, databaseName)
       }
       if (!inheritedFromActive && this.selectedNodeId) {
         const connNode = findConnectionAncestor(this.tree, this.selectedNodeId)
         const dbNode = findDatabaseAncestor(this.tree, this.selectedNodeId)
+        const schemaNode = findSchemaAncestor(this.tree, this.selectedNodeId)
         const meta = connNode?.meta as { assetId?: string } | undefined
         assetId = meta?.assetId
         databaseName = dbNode?.name
         connectionId = connNode?.id
+        schemaName = schemaNode?.name ?? pickDefaultSchema(this.tree, assetId, databaseName)
       }
 
       const tab: DatabaseWorkspaceTab = {
@@ -621,6 +635,7 @@ export const useDatabaseWorkspaceStore = defineStore('databaseWorkspace', {
         connectionId,
         assetId,
         databaseName,
+        schemaName,
         sql: '',
         resultColumns: [],
         resultRows: [],

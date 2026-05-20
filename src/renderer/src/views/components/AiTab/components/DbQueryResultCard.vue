@@ -16,7 +16,17 @@
       v-if="showSqlBlock"
       class="sql-block"
     >
-      <div class="sql-title">SQL</div>
+      <div class="sql-title-row">
+        <div class="sql-title">SQL</div>
+        <a-button
+          size="small"
+          type="text"
+          class="sql-title-action"
+          @click="handleCopySql"
+        >
+          {{ t('ai.copy') }}
+        </a-button>
+      </div>
       <pre>{{ result.executedSql }}</pre>
     </div>
 
@@ -35,6 +45,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { message } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 
 interface DbQueryResultView {
   engine: 'mysql' | 'postgresql'
@@ -49,6 +61,7 @@ interface DbQueryResultView {
 const props = defineProps<{
   result: DbQueryResultView
 }>()
+const { t } = useI18n()
 
 const isWriteSql = computed(() => {
   const sql = (props.result.executedSql || '').trim().toLowerCase()
@@ -80,6 +93,37 @@ const pagination = computed(() => ({
   pageSizeOptions: ['20', '50', '100'],
   showTotal: (total: number) => `Total ${total}`
 }))
+
+const handleCopySql = async () => {
+  const sql = props.result.executedSql?.trim()
+  if (!sql) return
+
+  try {
+    const nav = globalThis.navigator as Navigator | undefined
+    if (nav?.clipboard?.writeText) {
+      await nav.clipboard.writeText(sql)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = sql
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      try {
+        const execCommand = (document as Document & { execCommand?: (command: string) => boolean }).execCommand
+        if (typeof execCommand !== 'function' || !execCommand.call(document, 'copy')) {
+          throw new Error('copy not supported')
+        }
+      } finally {
+        document.body.removeChild(ta)
+      }
+    }
+    message.success(t('database.copiedToClipboard'))
+  } catch {
+    message.error(t('database.dbAi.copyFailed'))
+  }
+}
 </script>
 
 <style scoped lang="less">
@@ -122,12 +166,23 @@ const pagination = computed(() => ({
   overflow: hidden;
 }
 
+.sql-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-color-secondary);
+}
+
 .sql-title {
   padding: 4px 8px;
   font-size: 12px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-color-secondary);
   color: var(--text-color-secondary);
+}
+
+.sql-title-action {
+  margin-right: 4px;
 }
 
 .sql-block pre {

@@ -502,6 +502,135 @@ describe('openNewSqlTab', () => {
     expect(store.activeTab?.databaseName).toBeUndefined()
   })
 
+  it('inherits schema from the selected PostgreSQL tree path so Run is not blocked on a fresh query tab', () => {
+    const store = useDatabaseWorkspaceStore()
+    store.tree = [
+      {
+        id: 'group-default',
+        type: 'group',
+        name: 'Default Group',
+        expanded: true,
+        children: [
+          {
+            id: 'conn-pg',
+            type: 'connection',
+            name: 'pg-prod',
+            parentId: 'group-default',
+            expanded: true,
+            meta: { assetId: 'asset-pg', dbType: 'postgresql' },
+            children: [
+              {
+                id: 'db-main',
+                type: 'database',
+                name: 'main',
+                parentId: 'conn-pg',
+                expanded: true,
+                children: [
+                  {
+                    id: 'schema-public',
+                    type: 'schema',
+                    name: 'public',
+                    parentId: 'db-main',
+                    expanded: true,
+                    children: [
+                      {
+                        id: 'folder-tables',
+                        type: 'folder',
+                        name: 'tables',
+                        parentId: 'schema-public',
+                        expanded: true,
+                        children: [
+                          {
+                            id: 'table-users',
+                            type: 'table',
+                            name: 'users',
+                            parentId: 'folder-tables'
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+    store.setSelectedNode('table-users')
+
+    store.openNewSqlTab()
+
+    expect(store.activeTab).toMatchObject({
+      kind: 'sql',
+      assetId: 'asset-pg',
+      databaseName: 'main',
+      schemaName: 'public'
+    })
+  })
+
+  it('fills the default PostgreSQL schema when inheriting context from an active tab that lacks schemaName', () => {
+    const store = useDatabaseWorkspaceStore()
+    store.tree = [
+      {
+        id: 'group-default',
+        type: 'group',
+        name: 'Default Group',
+        expanded: true,
+        children: [
+          {
+            id: 'conn-pg',
+            type: 'connection',
+            name: 'pg-prod',
+            parentId: 'group-default',
+            expanded: true,
+            meta: { assetId: 'asset-pg', dbType: 'postgresql' },
+            children: [
+              {
+                id: 'db-main',
+                type: 'database',
+                name: 'main',
+                parentId: 'conn-pg',
+                expanded: true,
+                children: [
+                  {
+                    id: 'schema-public',
+                    type: 'schema',
+                    name: 'public',
+                    parentId: 'db-main',
+                    expanded: false,
+                    children: []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+    store.tabs.push({
+      id: 'tab-sql-existing',
+      title: 'Existing Query',
+      kind: 'sql',
+      connectionId: 'conn-pg',
+      assetId: 'asset-pg',
+      databaseName: 'main',
+      sql: 'SELECT 1',
+      resultColumns: [],
+      resultRows: []
+    })
+    store.setActiveTab('tab-sql-existing')
+
+    store.openNewSqlTab()
+
+    expect(store.activeTab).toMatchObject({
+      kind: 'sql',
+      assetId: 'asset-pg',
+      databaseName: 'main',
+      schemaName: 'public'
+    })
+  })
+
   it('does NOT fall back to selectedNodeId when active tab is a non-overview tab without assetId', () => {
     const store = useDatabaseWorkspaceStore()
     // Active tab is a blank SQL tab created with no context
