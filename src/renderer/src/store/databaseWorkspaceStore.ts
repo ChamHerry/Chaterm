@@ -258,6 +258,18 @@ function buildTreeFromAssets(groups: DbAssetGroupDtoLike[], assets: DbAssetDtoLi
   return tree
 }
 
+function ensureWorkspaceTabInvariant(state: Pick<DatabaseWorkspaceState, 'tabs' | 'activeTabId'>): void {
+  if (state.tabs.length === 0) {
+    const overview = buildOverviewTab()
+    state.tabs = [overview]
+    state.activeTabId = overview.id
+    return
+  }
+  if (!state.tabs.some((tab) => tab.id === state.activeTabId)) {
+    state.activeTabId = state.tabs[0].id
+  }
+}
+
 function findNode(nodes: DatabaseTreeNode[], id: string): DatabaseTreeNode | null {
   for (const node of nodes) {
     if (node.id === id) return node
@@ -1439,14 +1451,14 @@ export const useDatabaseWorkspaceStore = defineStore('databaseWorkspace', {
       }
     },
     closeTab(tabId: string) {
-      if (tabId === OVERVIEW_TAB_ID) return
       const index = this.tabs.findIndex((tab) => tab.id === tabId)
-      if (index === -1) return
+      if (index === -1 || this.tabs.length <= 1) return
       this.tabs.splice(index, 1)
       if (this.activeTabId === tabId) {
         const fallback = this.tabs[index] ?? this.tabs[index - 1] ?? this.tabs[0]
-        this.activeTabId = fallback ? fallback.id : OVERVIEW_TAB_ID
+        this.activeTabId = fallback?.id ?? this.activeTabId
       }
+      ensureWorkspaceTabInvariant(this)
     },
     openConnectionModal(draft?: Partial<DatabaseConnectionDraft>) {
       this.connectionModalMode = 'create'
@@ -1973,9 +1985,7 @@ export const useDatabaseWorkspaceStore = defineStore('databaseWorkspace', {
     async removeConnection(connectionId: string) {
       // Close any open tabs bound to this asset.
       this.tabs = this.tabs.filter((t) => t.assetId !== connectionId)
-      if (!this.tabs.some((t) => t.id === this.activeTabId)) {
-        this.activeTabId = this.tabs[0]?.id ?? OVERVIEW_TAB_ID
-      }
+      ensureWorkspaceTabInvariant(this)
       const api = getApi()
       if (!api?.dbAssetDelete) return { ok: false as const, errorMessage: 'not connected' }
       const result = await api.dbAssetDelete(connectionId)
@@ -2146,9 +2156,7 @@ export const useDatabaseWorkspaceStore = defineStore('databaseWorkspace', {
           )
       )
       this.tabs = survivors
-      if (!this.tabs.some((t) => t.id === this.activeTabId)) {
-        this.activeTabId = this.tabs[0]?.id ?? OVERVIEW_TAB_ID
-      }
+      ensureWorkspaceTabInvariant(this)
       // Reuse the existing lazy loader instead of a bespoke "reload-only-this-schema"
       // path — cheap and keeps one source of truth for subtree state.
       await this.refreshConnectionChildren(ctx.assetId)

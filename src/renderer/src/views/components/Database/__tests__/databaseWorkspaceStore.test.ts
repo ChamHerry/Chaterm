@@ -98,6 +98,29 @@ describe('databaseWorkspaceStore', () => {
     expect(store.activeTab?.kind).toBe('overview')
   })
 
+  it('allows closing the overview tab when another workspace tab exists', () => {
+    const store = useDatabaseWorkspaceStore()
+    const overviewId = store.tabs[0].id
+
+    store.openNewSqlTab()
+    store.setActiveTab(overviewId)
+    store.closeTab(overviewId)
+
+    expect(store.tabs.some((tab) => tab.id === overviewId)).toBe(false)
+    expect(store.activeTab?.kind).toBe('sql')
+  })
+
+  it('keeps the last remaining workspace tab open', () => {
+    const store = useDatabaseWorkspaceStore()
+    const overviewId = store.tabs[0].id
+
+    store.closeTab(overviewId)
+
+    expect(store.tabs).toHaveLength(1)
+    expect(store.tabs[0].id).toBe(overviewId)
+    expect(store.activeTabId).toBe(overviewId)
+  })
+
   describe('backend integration', () => {
     it('loads groups and assets from window.api and rebuilds the tree', async () => {
       const mockApi = {
@@ -979,6 +1002,24 @@ describe('connection-menu actions', () => {
     expect(store.tabs.some((t) => t.id === secondTabId)).toBe(false)
     // activeTabId must point at a surviving tab (the Overview tab).
     expect(store.tabs.some((t) => t.id === store.activeTabId)).toBe(true)
+  })
+
+  it('removeConnection recreates overview when all remaining tabs are removed after overview was closed', async () => {
+    const store = useDatabaseWorkspaceStore()
+    store.applyAssets([], [baseAsset])
+    await store.openQueryConsole('a1')
+    const queryTabId = store.tabs[store.tabs.length - 1].id
+    const overviewId = store.tabs.find((t) => t.kind === 'overview')!.id
+
+    store.closeTab(overviewId)
+    expect(store.tabs.map((t) => t.id)).toEqual([queryTabId])
+
+    mockApi.dbAssetList.mockResolvedValueOnce([])
+    await store.removeConnection('a1')
+
+    expect(store.tabs).toHaveLength(1)
+    expect(store.tabs[0].kind).toBe('overview')
+    expect(store.activeTabId).toBe(store.tabs[0].id)
   })
 })
 

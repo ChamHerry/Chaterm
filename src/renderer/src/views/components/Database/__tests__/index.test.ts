@@ -4,6 +4,17 @@ import { createPinia, setActivePinia } from 'pinia'
 import DatabaseWorkspace from '../index.vue'
 import { useDatabaseWorkspaceStore } from '@/store/databaseWorkspaceStore'
 
+vi.hoisted(() => {
+  vi.stubGlobal('localStorage', {
+    getItem: vi.fn(() => null),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+    key: vi.fn(() => null),
+    length: 0
+  })
+})
+
 // markdownRenderer imports monaco-editor/esm/vs/editor/editor.all.js which calls
 // document.queryCommandSupported — not available in jsdom. Stub it out entirely.
 vi.mock('@views/components/AiTab/components/format/markdownRenderer.vue', () => ({
@@ -205,6 +216,22 @@ describe('Database workspace shell', () => {
   it('renders the .db-tabs__add button', () => {
     const wrapper = mountWorkspace()
     expect(wrapper.find('.db-tabs__add').exists()).toBe(true)
+  })
+
+  it('shows a close button for the overview tab when another workspace tab exists', async () => {
+    const wrapper = mountWorkspace()
+    const store = useDatabaseWorkspaceStore()
+
+    store.openNewSqlTab()
+    await wrapper.vm.$nextTick()
+
+    const closeButtons = wrapper.findAll('.db-tabs__close')
+    expect(closeButtons).toHaveLength(2)
+
+    await closeButtons[0].trigger('click')
+
+    expect(store.tabs.some((tab) => tab.kind === 'overview')).toBe(false)
+    expect(store.activeTab?.kind).toBe('sql')
   })
 
   it('opens add menu instead of connection modal when add button is clicked', async () => {

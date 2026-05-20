@@ -25,7 +25,7 @@
           </span>
           <span class="db-tabs__title">{{ tab.title }}</span>
           <button
-            v-if="tab.kind !== 'overview'"
+            v-if="tabs.length > 1"
             class="db-tabs__close"
             :aria-label="`close ${tab.title}`"
             @click.stop="emit('close', tab.id)"
