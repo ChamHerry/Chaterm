@@ -1316,6 +1316,13 @@ const debouncedAiResizeCheck = () => {
 }
 
 const toggleSideBar = (value: string) => {
+  if ((value === 'left' || value === 'agentsLeft') && currentMenu.value === 'database') {
+    const nextOpen = !databaseWorkspaceStore.databaseSidebarOpen
+    databaseWorkspaceStore.setDatabaseSidebarOpen(nextOpen)
+    headerRef.value?.switchIcon('left', nextOpen)
+    return
+  }
+
   if (value === 'right' && currentMenu.value === 'database') {
     const nextOpen = !databaseWorkspaceStore.dbAi.aiPaneOpen
     databaseWorkspaceStore.setDbAiPaneOpen(nextOpen)
@@ -1449,6 +1456,8 @@ const toggleMenu = function (params) {
     } else {
       databaseWorkspaceStore.setDatabaseSidebarOpen(true)
     }
+    headerRef.value?.switchIcon('left', databaseWorkspaceStore.databaseSidebarOpen)
+    headerRef.value?.switchIcon('right', databaseWorkspaceStore.dbAi.aiPaneOpen)
     return
   }
 

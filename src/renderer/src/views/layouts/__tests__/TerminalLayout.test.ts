@@ -1132,4 +1132,15 @@ describe('TerminalLayout - Database Workspace Mode', () => {
     expect(source).toContain('databaseWorkspaceStore.toggleDatabaseSidebar()')
     expect(source).toContain('databaseWorkspaceStore.setDatabaseSidebarOpen(true)')
   })
+
+  it('routes the header left toggle to the database workspace sidebar while in database mode', () => {
+    expect(source).toContain("(value === 'left' || value === 'agentsLeft') && currentMenu.value === 'database'")
+    expect(source).toContain('databaseWorkspaceStore.setDatabaseSidebarOpen(nextOpen)')
+    expect(source).toContain("headerRef.value?.switchIcon('left', nextOpen)")
+  })
+
+  it('syncs header toggle icons when entering database mode', () => {
+    expect(source).toContain("headerRef.value?.switchIcon('left', databaseWorkspaceStore.databaseSidebarOpen)")
+    expect(source).toContain("headerRef.value?.switchIcon('right', databaseWorkspaceStore.dbAi.aiPaneOpen)")
+  })
 })
