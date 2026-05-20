@@ -14,7 +14,7 @@ const { runSampleRows, __testing: sampleTesting } = await import('../sample-rows
 const { runCountRows, __testing: countTesting } = await import('../count-rows')
 const { runExplainPlan } = await import('../explain-plan')
 const { runExecuteReadonlyQuery } = await import('../execute-readonly-query')
-const { runExecuteWriteQuery } = await import('../execute-write-query')
+const { runExecuteWriteQuery, __testing: writeTesting } = await import('../execute-write-query')
 const { runSuggestIndexes, __testing: suggestTesting } = await import('../suggest-indexes')
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ const { runSuggestIndexes, __testing: suggestTesting } = await import('../sugges
 // ---------------------------------------------------------------------------
 
 interface MockOverrides {
-  dbType?: 'mysql' | 'postgresql' | 'sqlite'
+  dbType?: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   databaseName?: string
   schemaName?: string
   databases?: string[]
@@ -289,6 +289,38 @@ describe('runInspectIndexes', () => {
     expect(out).toEqual([{ name: 'orders_pkey', columns: ['id'], unique: true, primary: true, method: 'btree' }])
   })
 
+  it('aggregator handles Oracle numeric uniqueness and primary flags', () => {
+    const rows = [{ name: 'ORDERS_PK', column_name: 'ID', seq: 1, is_unique: 1, is_primary: 1, method: 'NORMAL' }]
+    const out = inspectTesting.aggregateRows(rows, 'oracle')
+    expect(out).toEqual([{ name: 'ORDERS_PK', columns: ['ID'], unique: true, primary: true, method: 'NORMAL' }])
+  })
+
+  it('uses Oracle catalog tables for index inspection and falls back to session schema', async () => {
+    let capturedSql = ''
+    let capturedParams: unknown[] | undefined
+    const session = makeSession({
+      dbType: 'oracle',
+      schemaName: 'HR',
+      schemas: ['HR'],
+      async execute(sql, opts) {
+        capturedSql = sql
+        capturedParams = opts?.params
+        return {
+          columns: ['name', 'column_name', 'seq', 'is_unique', 'is_primary', 'method'],
+          rows: [{ name: 'ORDERS_PK', column_name: 'ID', seq: 1, is_unique: 1, is_primary: 1, method: 'NORMAL' }],
+          rowCount: 1,
+          truncated: false,
+          durationMs: 0
+        }
+      }
+    } as MockOverrides)
+    const r = await runInspectIndexes(session, { database: 'ORCLPDB1', table: 'orders' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.indexes[0]).toMatchObject({ name: 'ORDERS_PK', columns: ['ID'], unique: true, primary: true })
+    expect(capturedSql).toContain('all_indexes')
+    expect(capturedParams).toEqual(['HR', 'ORDERS'])
+  })
+
   it('lists SQLite indexes via pragma metadata', async () => {
     const executed: string[] = []
     const session = makeSession({
@@ -402,6 +434,22 @@ describe('runSampleRows', () => {
     expect(captured).toContain('"main"."orders"')
     expect(captured).toMatch(/LIMIT 3$/)
   })
+
+  it('Oracle uses schema qualification and FETCH FIRST pagination', async () => {
+    let captured = ''
+    const session = makeSession({
+      dbType: 'oracle',
+      schemaName: 'HR',
+      schemas: ['HR'],
+      async execute(sql) {
+        captured = sql
+        return { columns: [], rows: [], rowCount: 0, truncated: false, durationMs: 0 }
+      }
+    } as MockOverrides)
+    await runSampleRows(session, { database: 'ORCLPDB1', table: 'orders', limit: 3 })
+    expect(captured).toContain('"orders"')
+    expect(captured).toMatch(/FETCH FIRST 3 ROWS ONLY$/)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -440,6 +488,29 @@ describe('runCountRows', () => {
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.data.count).toBe(9001)
     expect(capturedSql).toContain('pg_class')
+  })
+
+  it('uses all_tables.num_rows for approximate Oracle counts and falls back to session schema', async () => {
+    let capturedSql = ''
+    let capturedParams: unknown[] | undefined
+    const session = makeSession({
+      dbType: 'oracle',
+      schemaName: 'HR',
+      schemas: ['HR'],
+      async execute(sql, opts) {
+        capturedSql = sql
+        capturedParams = opts?.params
+        return { columns: ['n'], rows: [{ N: '77' }], rowCount: 1, truncated: false, durationMs: 0 }
+      }
+    } as MockOverrides)
+    const r = await runCountRows(session, { database: 'ORCLPDB1', table: 'orders' })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.count).toBe(77)
+      expect(r.data.approximate).toBe(true)
+    }
+    expect(capturedSql).toContain('all_tables')
+    expect(capturedParams).toEqual(['HR', 'ORDERS'])
   })
 
   it('runs exact COUNT(*) when exact=true', async () => {
@@ -548,6 +619,13 @@ describe('runExplainPlan', () => {
     expect(captured).toMatch(/^EXPLAIN QUERY PLAN /)
   })
 
+  it('returns unsupported for Oracle explain plan instead of executing a side-effecting plan statement', async () => {
+    const session = makeSession({ dbType: 'oracle', schemas: ['HR'] })
+    const r = await runExplainPlan(session, { sql: 'SELECT * FROM orders' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errorCode).toBe('E_DRIVER_UNSUPPORTED')
+  })
+
   it('rejects SQL exceeding the 50KB cap', async () => {
     const session = makeSession()
     const big = 'SELECT 1 -- ' + 'x'.repeat(51 * 1024)
@@ -604,6 +682,27 @@ describe('runExecuteWriteQuery', () => {
       expect(r.data.durationMs).toBe(8)
     }
     expect(captured).toBe("UPDATE users SET status='active' WHERE id=1")
+  })
+
+  it('commits Oracle transactional DML after approved write execution', async () => {
+    const captured: string[] = []
+    const session = makeSession({
+      dbType: 'oracle',
+      schemas: ['HR'],
+      async execute(sql) {
+        captured.push(sql)
+        return { columns: [], rows: [], rowCount: 0, truncated: false, durationMs: 8 }
+      }
+    } as MockOverrides)
+    const r = await runExecuteWriteQuery(session, { sql: "UPDATE users SET status='active' WHERE id=1" })
+    expect(r.ok).toBe(true)
+    expect(captured).toEqual(["UPDATE users SET status='active' WHERE id=1", 'COMMIT'])
+  })
+
+  it('detects Oracle transactional DML verbs for explicit commit handling', () => {
+    expect(writeTesting.isOracleTransactionalDml(' insert into t values (1)')).toBe(true)
+    expect(writeTesting.isOracleTransactionalDml('MERGE INTO t USING s ON (1=1) WHEN MATCHED THEN UPDATE SET a=1')).toBe(true)
+    expect(writeTesting.isOracleTransactionalDml('CREATE TABLE t (id number)')).toBe(false)
   })
 
   it('rejects read-only SQL for write tool', async () => {

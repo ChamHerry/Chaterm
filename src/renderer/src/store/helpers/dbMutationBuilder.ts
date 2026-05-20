@@ -10,6 +10,7 @@
  *   - MySQL:       `?` positional placeholders
  *   - PostgreSQL:  `$1`, `$2`, ... positional placeholders
  *   - SQLite:      `?` positional placeholders
+ *   - Oracle:      `:1`, `:2`, ... positional placeholders
  *
  * Identifiers (table, column, database, primary-key names) are NEVER
  * parameterized — the SQL dialect forbids it. We therefore require every
@@ -18,13 +19,13 @@
  * can surface it to the user rather than ship a malformed statement.
  */
 
-export type DbDialect = 'mysql' | 'postgresql' | 'sqlite'
+export type DbDialect = 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
 
 export interface BuildMutationsArgs {
   dbType: DbDialect
   database: string
   /**
-   * Schema the table lives in. Required for PostgreSQL tables not in the
+   * Schema the table lives in. Required for PostgreSQL/Oracle tables not in the
    * connection's default search_path; ignored for MySQL (it has no schema
    * layer — the "database.table" qualifier already scopes the table).
    */
@@ -55,7 +56,7 @@ function assertIdent(label: string, value: string): void {
 }
 
 // Quote an identifier for the target dialect. `table`.`col` in MySQL,
-// "table"."col" in PostgreSQL/SQLite. Identifiers must be pre-validated.
+// "table"."col" in PostgreSQL/SQLite/Oracle. Identifiers must be pre-validated.
 function quoteIdent(dialect: DbDialect, ident: string): string {
   return dialect === 'mysql' ? `\`${ident}\`` : `"${ident}"`
 }
@@ -65,10 +66,10 @@ function quoteIdent(dialect: DbDialect, ident: string): string {
  *
  * - MySQL has no schema layer, so we qualify with the database: `db`.`tbl`.
  * - SQLite's database is the attached alias (`main`, `temp`, or ATTACH name).
- * - PostgreSQL connections are already bound to one database, so we cannot
- *   cross-qualify with the database name. Instead, when a schema is known
- *   we emit `"schema"."table"`; otherwise we fall back to bare `"table"`
- *   and let the server's search_path resolve it.
+ * - PostgreSQL/Oracle connections are already bound to one database/service,
+ *   so we cannot cross-qualify with the database name. Instead, when a schema
+ *   is known we emit `"schema"."table"`; otherwise we fall back to bare
+ *   `"table"` and let the server's current schema/search_path resolve it.
  */
 function qualifiedTable(dialect: DbDialect, database: string, schema: string | undefined, table: string): string {
   if (dialect === 'mysql') {
@@ -85,13 +86,15 @@ function qualifiedTable(dialect: DbDialect, database: string, schema: string | u
 
 /**
  * Positional placeholder emitter. Kept as a closure per-statement so each
- * statement's `$N` numbering starts at 1 in PostgreSQL. MySQL always uses `?`.
+ * statement's `$N` / `:N` numbering starts at 1. MySQL/SQLite use `?`.
  */
 function makePlaceholder(dialect: DbDialect): () => string {
   let n = 0
   return () => {
     n += 1
-    return dialect === 'postgresql' ? `$${n}` : '?'
+    if (dialect === 'postgresql') return `$${n}`
+    if (dialect === 'oracle') return `:${n}`
+    return '?'
   }
 }
 
@@ -196,8 +199,10 @@ function buildDeleteStatement(
     sql = `DELETE FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1`
   } else if (dialect === 'sqlite') {
     sql = `DELETE FROM ${qualifiedTable(dialect, database, schema, table)} WHERE rowid = (SELECT rowid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
-  } else {
+  } else if (dialect === 'postgresql') {
     sql = `DELETE FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ctid = (SELECT ctid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
+  } else {
+    throw new Error('Oracle table editing requires a primary key in this version')
   }
   return { sql, params }
 }
@@ -260,8 +265,10 @@ function buildUpdateStatement(
     sql = `UPDATE ${qualifiedTable(dialect, database, schema, table)} SET ${setParts.join(', ')} WHERE ${where} LIMIT 1`
   } else if (dialect === 'sqlite') {
     sql = `UPDATE ${qualifiedTable(dialect, database, schema, table)} SET ${setParts.join(', ')} WHERE rowid = (SELECT rowid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
-  } else {
+  } else if (dialect === 'postgresql') {
     sql = `UPDATE ${qualifiedTable(dialect, database, schema, table)} SET ${setParts.join(', ')} WHERE ctid = (SELECT ctid FROM ${qualifiedTable(dialect, database, schema, table)} WHERE ${where} LIMIT 1)`
+  } else {
+    throw new Error('Oracle table editing requires a primary key in this version')
   }
   return { sql, params }
 }

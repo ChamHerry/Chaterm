@@ -89,6 +89,23 @@ describe('dbMutationBuilder.buildMutations', () => {
     expect(stmts[0].params).toEqual(['alice', 30])
   })
 
+  it('generates Oracle INSERT with schema qualification and :N placeholders', () => {
+    const stmts = buildMutations({
+      dbType: 'oracle',
+      database: 'ORCLPDB1',
+      schema: 'HR',
+      table: 'users',
+      primaryKey: ['id'],
+      newRows: [{ tmpId: 't1', values: { name: 'alice', age: 30 } }],
+      deletedRowKeys: [],
+      updatedCells: [],
+      originalRows: new Map(),
+      knownColumns: ['id', 'name', 'age']
+    })
+    expect(stmts[0].sql).toBe('INSERT INTO "HR"."users" ("name", "age") VALUES (:1, :2)')
+    expect(stmts[0].params).toEqual(['alice', 30])
+  })
+
   // ---- DELETE ----
 
   it('generates MySQL DELETE with pk WHERE', () => {
@@ -246,6 +263,42 @@ describe('dbMutationBuilder.buildMutations', () => {
     })
     expect(stmts[0].sql).toBe('UPDATE "main"."t" SET "a" = ? WHERE rowid = (SELECT rowid FROM "main"."t" WHERE "a" = ? AND "b" = ? LIMIT 1)')
     expect(stmts[0].params).toEqual([99, 1, 'x'])
+  })
+
+  it('generates Oracle UPDATE with primary key WHERE and :N placeholders', () => {
+    const rowKey = JSON.stringify([7])
+    const stmts = buildMutations({
+      dbType: 'oracle',
+      database: 'ORCLPDB1',
+      schema: 'HR',
+      table: 'users',
+      primaryKey: ['id'],
+      newRows: [],
+      deletedRowKeys: [],
+      updatedCells: [[rowKey, { name: 'bob' }]],
+      originalRows: new Map([[rowKey, { id: 7, name: 'alice' }]]),
+      knownColumns: ['id', 'name']
+    })
+    expect(stmts[0].sql).toBe('UPDATE "HR"."users" SET "name" = :1 WHERE "id" = :2')
+    expect(stmts[0].params).toEqual(['bob', 7])
+  })
+
+  it('rejects Oracle UPDATE fallback when primary key is missing', () => {
+    const rowKey = '__no_pk__0'
+    expect(() =>
+      buildMutations({
+        dbType: 'oracle',
+        database: 'ORCLPDB1',
+        schema: 'HR',
+        table: 't',
+        primaryKey: null,
+        newRows: [],
+        deletedRowKeys: [],
+        updatedCells: [[rowKey, { a: 99 }]],
+        originalRows: new Map([[rowKey, { a: 1 }]]),
+        knownColumns: ['a']
+      })
+    ).toThrow(/Oracle table editing requires a primary key/)
   })
 
   // ---- ORDER ----

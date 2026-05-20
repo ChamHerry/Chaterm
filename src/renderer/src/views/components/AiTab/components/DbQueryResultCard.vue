@@ -49,7 +49,7 @@ import { message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 
 interface DbQueryResultView {
-  engine: 'mysql' | 'postgresql' | 'sqlite'
+  engine: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   executedSql: string
   columns: string[]
   rows: Array<Record<string, unknown>>

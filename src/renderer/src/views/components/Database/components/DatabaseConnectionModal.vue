@@ -347,6 +347,12 @@ const autoUrl = computed(() => {
   const d = props.draft
   if (!d) return ''
   if (d.dbType === 'SQLite') return d.filePath ? `sqlite://${d.filePath}` : 'sqlite://'
+  if (d.dbType === 'Oracle') {
+    const host = d.host || ''
+    const port = d.port ? String(d.port) : ''
+    const service = d.database ? `/${d.database}` : ''
+    return `${host}${port ? `:${port}` : ''}${service}`
+  }
   const scheme = d.dbType === 'PostgreSQL' ? 'jdbc:postgresql' : 'jdbc:mysql'
   const host = d.host || ''
   const port = d.port ? String(d.port) : ''
@@ -392,8 +398,14 @@ const validate = (): { valid: boolean; errors: string[] } => {
   const draft = props.draft
   const s = schema.value
   if (!draft || !s) return { valid: false, errors: ['draft'] }
+  const hasOracleConnectString = draft.dbType === 'Oracle' && !!draft.url?.trim()
   for (const field of s.fields) {
     if (!field.required) continue
+    // Oracle can be configured with a full EZ Connect/JDBC-style connect
+    // string instead of separate host/port/service fields. Keep the modal's
+    // validation aligned with the store/main-process validation so URL-only
+    // Oracle connections can be tested and saved.
+    if (hasOracleConnectString && (field.key === 'host' || field.key === 'port')) continue
     const raw = draft[field.key]
     if (field.kind === 'number') {
       const n = Number(raw ?? 0)

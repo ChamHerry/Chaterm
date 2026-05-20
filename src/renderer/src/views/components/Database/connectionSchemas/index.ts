@@ -7,6 +7,7 @@ import type { DatabaseType } from '../types'
 import { mysqlConnectionSchema } from './mysql'
 import { postgresqlConnectionSchema } from './postgresql'
 import { sqliteConnectionSchema } from './sqlite'
+import { oracleConnectionSchema } from './oracle'
 
 export type ConnectionFieldKind = 'text' | 'password' | 'number' | 'select' | 'checkbox'
 
@@ -36,7 +37,8 @@ export interface DbConnectionSchema {
 const SCHEMAS: Partial<Record<DatabaseType, DbConnectionSchema>> = {
   MySQL: mysqlConnectionSchema,
   PostgreSQL: postgresqlConnectionSchema,
-  SQLite: sqliteConnectionSchema
+  SQLite: sqliteConnectionSchema,
+  Oracle: oracleConnectionSchema
 }
 
 export function getConnectionSchema(dbType: DatabaseType): DbConnectionSchema | null {

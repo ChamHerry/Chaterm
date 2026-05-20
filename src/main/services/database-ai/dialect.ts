@@ -7,7 +7,7 @@ import type { DialectInfo } from './types'
 
 /**
  * Canonical dialect descriptors. `identifierQuote` matches the engine's
- * default quoting character (MySQL uses backticks, PostgreSQL uses
+ * default quoting character (MySQL uses backticks, PostgreSQL/SQLite/Oracle use
  * double quotes).
  */
 const DIALECT_TABLE: Record<SqlDialect, DialectInfo> = {
@@ -24,6 +24,11 @@ const DIALECT_TABLE: Record<SqlDialect, DialectInfo> = {
   sqlite: {
     dialect: 'sqlite',
     displayName: 'SQLite',
+    identifierQuote: '"'
+  },
+  oracle: {
+    dialect: 'oracle',
+    displayName: 'Oracle',
     identifierQuote: '"'
   }
 }
@@ -52,6 +57,7 @@ export function normalizeDialect(candidate: unknown): SqlDialect | null {
   if (lower === 'mysql') return 'mysql'
   if (lower === 'postgres' || lower === 'postgresql' || lower === 'pg') return 'postgresql'
   if (lower === 'sqlite' || lower === 'sqlite3') return 'sqlite'
+  if (lower === 'oracle' || lower === 'oracledb' || lower === 'ora' || lower === 'plsql') return 'oracle'
   return null
 }
 
@@ -65,5 +71,5 @@ export function isDifferentDialect(source: SqlDialect, target: SqlDialect): bool
 
 /** Enumerate all supported dialects; order is stable for UI pickers. */
 export function allDialects(): SqlDialect[] {
-  return ['mysql', 'postgresql', 'sqlite']
+  return ['mysql', 'postgresql', 'sqlite', 'oracle']
 }

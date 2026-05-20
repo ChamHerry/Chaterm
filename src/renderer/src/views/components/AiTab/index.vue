@@ -922,7 +922,7 @@ interface Props {
     assetId?: string
     databaseName?: string
     schemaName?: string
-    dbType?: 'mysql' | 'postgresql' | 'sqlite'
+    dbType?: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   }
   /** Database tree for ConnectionPicker / DatabasePicker / SchemaPicker options. */
   dbTree?: DatabaseTreeNode[]
@@ -1157,7 +1157,7 @@ interface ContextTruncationNoticeMessage {
 }
 
 interface DbQueryResultView {
-  engine: 'mysql' | 'postgresql' | 'sqlite'
+  engine: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   executedSql: string
   columns: string[]
   rows: Array<Record<string, unknown>>

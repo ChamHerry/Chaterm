@@ -254,7 +254,7 @@ const dbAiContext = ref<{
   assetId?: string
   databaseName?: string
   schemaName?: string
-  dbType?: 'mysql' | 'postgresql' | 'sqlite'
+  dbType?: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
 }>({})
 
 const canToggleAiPane = computed(() => {
@@ -960,7 +960,7 @@ const handleSelectRow = (rowKey: string) => {
 interface TableActionCtx {
   nodeId: string
   assetId: string
-  dbType: 'mysql' | 'postgresql' | 'sqlite'
+  dbType: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   databaseName: string
   schemaName?: string
   tableName: string

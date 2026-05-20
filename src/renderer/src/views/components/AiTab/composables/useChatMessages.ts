@@ -29,7 +29,7 @@ let globalIpcListenerInitialized = false
  */
 export interface AiTabDbContext {
   assetId: string
-  dbType: 'mysql' | 'postgresql' | 'sqlite'
+  dbType: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   databaseName?: string
   schemaName?: string
   assetName?: string

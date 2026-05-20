@@ -11,6 +11,7 @@ import { buildTableQuery, type ColumnFilter, type ColumnSort } from '../services
 import { fetchPostgresTableDdl } from '../services/database/drivers/postgres-driver'
 import { fetchMysqlTableDdl } from '../services/database/drivers/mysql-driver'
 import { fetchSqliteTableDdl } from '../services/database/drivers/sqlite-driver'
+import { fetchOracleTableDdl } from '../services/database/drivers/oracle-driver'
 
 const logger = createLogger('db')
 
@@ -22,7 +23,7 @@ const logger = createLogger('db')
  */
 interface RendererDbAssetPayload {
   name: string
-  db_type: 'mysql' | 'postgresql' | 'sqlite'
+  db_type: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   host?: string | null
   port?: number | null
   file_path?: string | null
@@ -56,7 +57,7 @@ export interface DbAssetDto {
   name: string
   group_id: string | null
   group_name: string | null
-  db_type: 'mysql' | 'postgresql' | 'sqlite'
+  db_type: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   environment: string | null
   host: string | null
   port: number | null
@@ -68,6 +69,7 @@ export interface DbAssetDto {
   username: string | null
   hasPassword: boolean
   ssl_mode: string | null
+  jdbc_url: string | null
   status: string
   last_connected_at: string | null
   last_tested_at: string | null
@@ -105,6 +107,7 @@ function toDto(record: DbAssetRecord): DbAssetDto {
     username: record.username,
     hasPassword: !!record.password_ciphertext,
     ssl_mode: record.ssl_mode,
+    jdbc_url: record.jdbc_url,
     status: record.status,
     last_connected_at: record.last_connected_at,
     last_tested_at: record.last_tested_at,
@@ -125,6 +128,10 @@ function toGroupDto(record: DbAssetGroupRecord): DbAssetGroupDto {
     created_at: record.created_at,
     updated_at: record.updated_at
   }
+}
+
+function isOracleTransactionalDml(sql: string): boolean {
+  return /^(insert|update|delete|merge)\b/i.test(String(sql ?? '').trim())
 }
 
 /**
@@ -325,17 +332,17 @@ export function registerDbAssetHandlers(): void {
         file_path: payload.file_path ?? null,
         connection_mode: payload.connection_mode ?? (payload.db_type === 'sqlite' ? 'readwrite' : null),
         database_name: payload.database_name ?? (payload.db_type === 'sqlite' ? 'main' : null),
-        schema_name: null,
+        schema_name: payload.schema_name ?? null,
         auth_type: 'password',
         username: payload.username ?? null,
         password_ciphertext: cipher,
         ssl_mode: payload.ssl_mode ?? null,
-        jdbc_url: null,
+        jdbc_url: payload.jdbc_url ?? null,
         driver_name: null,
         driver_class_name: null,
         ssh_tunnel_enabled: 0,
         ssh_tunnel_asset_uuid: null,
-        options_json: null,
+        options_json: payload.options_json ?? null,
         tags_json: null,
         status: 'testing',
         last_connected_at: null,
@@ -452,16 +459,21 @@ export function registerDbAssetHandlers(): void {
         const safe = payload.databaseName.replace(/`/g, '')
         await mgr.executeQuery(payload.id, `USE \`${safe}\``)
       }
-      // For Postgres, set the session search_path so unqualified references
-      // in the user SQL resolve against the schema selected in the toolbar.
-      // Run as a separate statement because the pg driver uses the extended
-      // query protocol (params are always passed), which rejects multi-
-      // statement strings.
+      // For schema-aware engines, scope unqualified references to the schema
+      // selected in the toolbar. Run as a separate statement because drivers
+      // may reject multi-statement strings under their extended protocols.
       if (payload.schemaName && asset?.db_type === 'postgresql') {
         const safeSchema = String(payload.schemaName).replace(/"/g, '""')
         await mgr.executeQuery(payload.id, `SET search_path TO "${safeSchema}", public`)
       }
+      if (payload.schemaName && asset?.db_type === 'oracle') {
+        const safeSchema = String(payload.schemaName).replace(/"/g, '""')
+        await mgr.executeQuery(payload.id, `ALTER SESSION SET CURRENT_SCHEMA = "${safeSchema}"`)
+      }
       const result = await mgr.executeQuery(payload.id, payload.sql)
+      if (asset?.db_type === 'oracle' && isOracleTransactionalDml(payload.sql)) {
+        await mgr.executeQuery(payload.id, 'COMMIT')
+      }
       return { ok: true, ...result }
     } catch (error) {
       logger.error('db-asset-execute-query failed', {
@@ -686,6 +698,13 @@ export function registerDbAssetHandlers(): void {
           const values = (res.rows ?? []).map((r) => r.v ?? null)
           return { ok: true, values }
         }
+        if (asset.db_type === 'oracle') {
+          const qualified = payload.schema ? `"${payload.schema}"."${payload.table}"` : `"${payload.table}"`
+          const sql = `SELECT DISTINCT "${payload.column}" AS "V" FROM ${qualified} ORDER BY 1 FETCH FIRST ${limit} ROWS ONLY`
+          const res = await mgr.executeQuery(payload.id, sql)
+          const values = (res.rows ?? []).map((r) => r.V ?? r.v ?? null)
+          return { ok: true, values }
+        }
         // postgres: schema-qualify when known so non-public tables resolve.
         const qualified = payload.schema ? `"${payload.schema}"."${payload.table}"` : `"${payload.table}"`
         const sql = `SELECT DISTINCT "${payload.column}" AS v FROM ${qualified} ORDER BY 1 LIMIT ${limit}`
@@ -727,49 +746,59 @@ export function registerDbAssetHandlers(): void {
     }
   })
 
-  ipcMain.handle('db-asset:execute-mutations', async (_, payload: { id: string; database?: string; statements: MutationStatement[] }) => {
-    try {
-      if (!payload || typeof payload.id !== 'string' || !Array.isArray(payload.statements)) {
-        return { ok: false, errorMessage: 'invalid payload', durationMs: 0 }
-      }
-      const mgr = await getConnectionManager()
-      if (!mgr.isConnected(payload.id)) {
-        return { ok: false, errorMessage: 'not connected', durationMs: 0 }
-      }
-      const service = await resolveAssetService()
-      const asset = service.getDbAsset(payload.id)
-      if (!asset) return { ok: false, errorMessage: 'asset not found', durationMs: 0 }
-
-      // Scope MySQL sessions to the requested database before mutating.
-      if (payload.database && asset.db_type === 'mysql') {
-        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(payload.database)) {
-          return { ok: false, errorMessage: 'unsafe database name', durationMs: 0 }
+  ipcMain.handle(
+    'db-asset:execute-mutations',
+    async (_, payload: { id: string; database?: string; schema?: string; statements: MutationStatement[] }) => {
+      try {
+        if (!payload || typeof payload.id !== 'string' || !Array.isArray(payload.statements)) {
+          return { ok: false, errorMessage: 'invalid payload', durationMs: 0 }
         }
-        await mgr.executeQuery(payload.id, `USE \`${payload.database}\``)
-      }
+        const mgr = await getConnectionManager()
+        if (!mgr.isConnected(payload.id)) {
+          return { ok: false, errorMessage: 'not connected', durationMs: 0 }
+        }
+        const service = await resolveAssetService()
+        const asset = service.getDbAsset(payload.id)
+        if (!asset) return { ok: false, errorMessage: 'asset not found', durationMs: 0 }
 
-      const result = await mgr.executeMutations(payload.id, payload.statements)
-      // Sanitized telemetry: never log statement params, only aggregate counts.
-      const affectedTotal = Array.isArray(result.affected) ? result.affected.reduce((acc, n) => acc + (typeof n === 'number' ? n : 0), 0) : 0
-      logger.info('db-asset.execute-mutations done', {
-        event: 'db-asset.execute-mutations.done',
-        id: payload.id,
-        stmtCount: payload.statements.length,
-        ok: result.ok,
-        affectedTotal,
-        durationMs: result.durationMs
-      })
-      return result
-    } catch (error) {
-      logger.error('db-asset.execute-mutations failed', {
-        event: 'db-asset.execute-mutations.error',
-        id: payload?.id,
-        stmtCount: Array.isArray(payload?.statements) ? payload.statements.length : 0,
-        error
-      })
-      return { ok: false, errorMessage: (error as Error).message, durationMs: 0 }
+        // Scope MySQL sessions to the requested database before mutating.
+        if (payload.database && asset.db_type === 'mysql') {
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(payload.database)) {
+            return { ok: false, errorMessage: 'unsafe database name', durationMs: 0 }
+          }
+          await mgr.executeQuery(payload.id, `USE \`${payload.database}\``)
+        }
+        if (payload.schema && asset.db_type === 'oracle') {
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(payload.schema)) {
+            return { ok: false, errorMessage: 'unsafe schema name', durationMs: 0 }
+          }
+          const safeSchema = payload.schema.replace(/"/g, '""')
+          await mgr.executeQuery(payload.id, `ALTER SESSION SET CURRENT_SCHEMA = "${safeSchema}"`)
+        }
+
+        const result = await mgr.executeMutations(payload.id, payload.statements)
+        // Sanitized telemetry: never log statement params, only aggregate counts.
+        const affectedTotal = Array.isArray(result.affected) ? result.affected.reduce((acc, n) => acc + (typeof n === 'number' ? n : 0), 0) : 0
+        logger.info('db-asset.execute-mutations done', {
+          event: 'db-asset.execute-mutations.done',
+          id: payload.id,
+          stmtCount: payload.statements.length,
+          ok: result.ok,
+          affectedTotal,
+          durationMs: result.durationMs
+        })
+        return result
+      } catch (error) {
+        logger.error('db-asset.execute-mutations failed', {
+          event: 'db-asset.execute-mutations.error',
+          id: payload?.id,
+          stmtCount: Array.isArray(payload?.statements) ? payload.statements.length : 0,
+          error
+        })
+        return { ok: false, errorMessage: (error as Error).message, durationMs: 0 }
+      }
     }
-  })
+  )
 
   ipcMain.handle('db-asset-table-ddl', async (_, payload: { id: string; database: string; schema?: string; table: string }) => {
     try {
@@ -803,6 +832,9 @@ export function registerDbAssetHandlers(): void {
         ddl = await fetchMysqlTableDdl(session.handle, payload.database, payload.table)
       } else if (asset.db_type === 'sqlite') {
         ddl = await fetchSqliteTableDdl(session.handle, payload.database || 'main', payload.table)
+      } else if (asset.db_type === 'oracle') {
+        const schema = payload.schema ?? asset.schema_name ?? ''
+        ddl = await fetchOracleTableDdl(session.handle, schema, payload.table)
       } else {
         return { ok: false, errorCode: 'other', errorMessage: `unsupported db_type: ${asset.db_type}` }
       }

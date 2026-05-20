@@ -19,6 +19,7 @@ import { ChatermDatabaseService } from '../../storage/db/chaterm.service'
 import { MysqlDriverAdapter, fetchMysqlTableDdl } from '../database/drivers/mysql-driver'
 import { PostgresDriverAdapter, fetchPostgresTableDdl } from '../database/drivers/postgres-driver'
 import { SqliteDriverAdapter, fetchSqliteTableDdl } from '../database/drivers/sqlite-driver'
+import { OracleDriverAdapter, fetchOracleTableDdl } from '../database/drivers/oracle-driver'
 import { randomUUID } from 'crypto'
 import type { BoundedQueryResult, ColumnInfo, DbAiActiveSession, DbAiSessionOwner, ExecuteQueryOptions, MetadataFetchOptions } from './types'
 import { DbAiMetadataCache, TTL_DEFAULT_MS, type ColumnInfoCacheValue } from './metadata-cache'
@@ -81,7 +82,8 @@ function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout?: 
 const ADAPTERS: Record<DbAssetType, DatabaseDriverAdapter> = {
   mysql: new MysqlDriverAdapter(),
   postgresql: new PostgresDriverAdapter(),
-  sqlite: new SqliteDriverAdapter()
+  sqlite: new SqliteDriverAdapter(),
+  oracle: new OracleDriverAdapter()
 }
 
 /**
@@ -107,6 +109,18 @@ const OPEN_SESSIONS = new Map<string, SessionEntry>()
  * error on missing asset so callers can surface a stable error message to
  * the drawer without leaking existence/enumeration info.
  */
+function parseAssetOptions(raw: string | null): Record<string, unknown> | null {
+  if (!raw?.trim()) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>
+  } catch {
+    // Ignore invalid optional driver metadata; the main connection path applies
+    // the same fallback and adapters can still connect without it.
+  }
+  return null
+}
+
 async function resolveCredential(assetId: string): Promise<{ asset: DbAssetType; credential: ResolvedDbCredential }> {
   const assetService = await ChatermDatabaseService.getInstance()
   const asset = assetService.getDbAsset(assetId)
@@ -124,7 +138,10 @@ async function resolveCredential(assetId: string): Promise<{ asset: DbAssetType;
     database: asset.database_name,
     sslMode: asset.ssl_mode,
     filePath: asset.file_path,
-    connectionMode: asset.connection_mode
+    connectionMode: asset.connection_mode,
+    schemaName: asset.schema_name,
+    jdbcUrl: asset.jdbc_url,
+    options: parseAssetOptions(asset.options_json)
   }
   return { asset: asset.db_type, credential }
 }
@@ -235,6 +252,9 @@ function buildSession(input: {
       }
       if (dbType === 'sqlite') {
         return fetchSqliteTableDdl(handle, db || 'main', table)
+      }
+      if (dbType === 'oracle') {
+        return fetchOracleTableDdl(handle, schema ?? schemaName ?? '', table)
       }
       return fetchMysqlTableDdl(handle, db, table)
     },

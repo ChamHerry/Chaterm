@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import DbQueryResultCard from '../DbQueryResultCard.vue'
 
 interface DbQueryResultView {
-  engine: 'mysql' | 'postgresql' | 'sqlite'
+  engine: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   executedSql: string
   columns: string[]
   rows: Array<Record<string, unknown>>

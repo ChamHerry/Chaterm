@@ -19,7 +19,7 @@ export interface ExplainPlanInput {
 }
 
 export interface ExplainPlanResult {
-  engine: 'mysql' | 'postgresql' | 'sqlite'
+  engine: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   executedSql: string
   /** Raw plan payload: MySQL JSON text, PG jsonb object, or row-form fallback. */
   plan: unknown
@@ -66,6 +66,8 @@ export async function runExplainPlan(session: DbAiActiveSession, input: ExplainP
       const r = await session.executeQuery(sql, { maxRows: 200, timeoutMs: 15_000 })
       // PG returns a column named "QUERY PLAN" with a jsonb array of plan nodes.
       plan = r.rows.map((row) => Object.values(row)[0])
+    } else if (session.dbType === 'oracle') {
+      return { ok: false, errorCode: 'E_DRIVER_UNSUPPORTED', errorMessage: 'Oracle explain plan is not supported by this tool yet.' }
     } else {
       const sql = `EXPLAIN QUERY PLAN ${sqlParam.value}`
       executedSql = sql

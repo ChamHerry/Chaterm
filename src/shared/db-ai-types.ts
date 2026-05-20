@@ -7,14 +7,14 @@
  * Supported database engines for DB-AI single-turn actions (track A).
  * DB ChatBot (track B) uses the same literal union; keep in sync if extended.
  */
-export type DbType = 'mysql' | 'postgresql' | 'sqlite'
+export type DbType = 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
 
 /**
  * Supported SQL dialects for prompt construction and target-dialect conversion.
  * The current MVP targets PostgreSQL, MySQL, and SQLite; additional dialects
  * should be appended to this union (never renamed) to preserve IPC payload stability.
  */
-export type SqlDialect = 'mysql' | 'postgresql' | 'sqlite'
+export type SqlDialect = 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
 
 /**
  * Single-turn DB-AI actions. `chat` is deliberately NOT part of this union:

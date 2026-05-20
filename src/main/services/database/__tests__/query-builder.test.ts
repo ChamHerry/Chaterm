@@ -51,6 +51,29 @@ describe('buildTableQuery', () => {
     expect(q.sql.startsWith('SELECT * FROM "users"')).toBe(true)
   })
 
+  it('builds Oracle schema-qualified query with :N filters and OFFSET/FETCH pagination', () => {
+    const q = buildTableQuery({
+      dbType: 'oracle',
+      database: 'ORCLPDB1',
+      schema: 'HR',
+      table: 'EMPLOYEES',
+      knownColumns: KNOWN,
+      filters: [
+        { column: 'id', operator: 'eq', value: '42' },
+        { column: 'name', operator: 'like', value: 'A%' }
+      ],
+      sort: { column: 'created_at', direction: 'desc' },
+      page: 3,
+      pageSize: 25
+    })
+    expect(q.sql).toBe(
+      'SELECT * FROM "HR"."EMPLOYEES" WHERE "id" = :1 AND "name" LIKE :2 ORDER BY "created_at" DESC OFFSET 50 ROWS FETCH NEXT 25 ROWS ONLY'
+    )
+    expect(q.params).toEqual(['42', 'A%'])
+    expect(q.countSql).toBe('SELECT COUNT(*) AS total FROM "HR"."EMPLOYEES" WHERE "id" = :1 AND "name" LIKE :2')
+    expect(q.countParams).toEqual(['42', 'A%'])
+  })
+
   it('qualifies sqlite tables with the database alias and inlined pagination', () => {
     const q = buildTableQuery({
       dbType: 'sqlite',

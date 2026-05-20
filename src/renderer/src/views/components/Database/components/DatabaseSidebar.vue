@@ -435,7 +435,7 @@ const emit = defineEmits<{
       ctx: {
         nodeId: string
         assetId: string
-        dbType: 'mysql' | 'postgresql' | 'sqlite'
+        dbType: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
         databaseName: string
         schemaName?: string
         tableName: string
@@ -664,7 +664,7 @@ const createDbCtx = ref<{ connectionId: string; dbType: 'mysql' | 'postgresql'; 
 interface TableMenuState {
   nodeId: string
   assetId: string
-  dbType: 'mysql' | 'postgresql' | 'sqlite'
+  dbType: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   databaseName: string
   schemaName?: string
   tableName: string
@@ -683,7 +683,9 @@ const connIsConnected = computed(() => {
   // main process and lags behind until loadAssetsFromBackend() runs.
   return store.connectionStatuses[connMenu.value.assetId] === 'connected'
 })
-const connCanCreateDatabase = computed(() => connIsConnected.value && connAsset.value?.db_type !== 'sqlite')
+const connCanCreateDatabase = computed(
+  () => connIsConnected.value && (connAsset.value?.db_type === 'mysql' || connAsset.value?.db_type === 'postgresql')
+)
 const connMoveTargets = computed(() => {
   if (!connAsset.value || !store) return []
   const currentGroupId = connAsset.value.group_id ?? null
@@ -760,7 +762,7 @@ const runConnAction = async (action: string, payload?: { targetGroupId?: string 
       await store.openQueryConsole(id)
       break
     case 'createDatabase':
-      if (assetDbType === 'sqlite') break
+      if (assetDbType !== 'mysql' && assetDbType !== 'postgresql') break
       createDbCtx.value = { connectionId: id, dbType: assetDbType, connectionName: assetName }
       createDbOpen.value = true
       break
@@ -806,7 +808,7 @@ const runConnAction = async (action: string, payload?: { targetGroupId?: string 
 const handleTableContext = (payload: {
   id: string
   assetId: string
-  dbType: 'mysql' | 'postgresql' | 'sqlite'
+  dbType: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   databaseName: string
   schemaName?: string
   tableName: string
@@ -819,7 +821,7 @@ const handleTableContext = (payload: {
   // The tree item forwards dbType from node.meta, which was only recently
   // added to table nodes. Fall back to the connection asset's db_type when
   // the meta field is missing so older trees still produce a correct menu.
-  let dbType: 'mysql' | 'postgresql' | 'sqlite' = payload.dbType
+  let dbType: 'mysql' | 'postgresql' | 'sqlite' | 'oracle' = payload.dbType
   if (store) {
     const asset = store.assets.find((a) => a.id === payload.assetId)
     if (asset) dbType = asset.db_type

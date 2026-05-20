@@ -69,7 +69,7 @@ function makeHarness(opts: {
     listTables: opts.listTables ? vi.fn(opts.listTables) : undefined
   }
   const mgr = new ConnectionManager({
-    adapters: { mysql: adapter, postgresql: adapter, sqlite: adapter },
+    adapters: { mysql: adapter, postgresql: adapter, sqlite: adapter, oracle: adapter },
     credentialResolver: { decryptSecret },
     statusUpdater
   })
@@ -220,6 +220,29 @@ describe('ConnectionManager', () => {
     const callArg = (adapter.testConnection as ReturnType<typeof vi.fn>).mock.calls[0][0] as ResolvedDbCredential
     expect(callArg).toMatchObject({ dbType: 'sqlite', host: null, port: null, filePath: '/tmp/app.sqlite3', connectionMode: 'readonly' })
   })
+
+  it('passes Oracle schema, JDBC URL, and parsed options to the adapter', async () => {
+    const { mgr, adapter } = makeHarness({})
+    await mgr.testConnection(
+      makeAsset({
+        db_type: 'oracle',
+        host: null,
+        port: null,
+        database_name: 'ORCLPDB1',
+        schema_name: 'HR',
+        jdbc_url: 'jdbc:oracle:thin:@//db.example.test:1521/ORCLPDB1',
+        options_json: JSON.stringify({ connectString: 'db.example.test:1521/ORCLPDB1', callTimeout: 45000 })
+      })
+    )
+    const callArg = (adapter.testConnection as ReturnType<typeof vi.fn>).mock.calls[0][0] as ResolvedDbCredential
+    expect(callArg).toMatchObject({
+      dbType: 'oracle',
+      database: 'ORCLPDB1',
+      schemaName: 'HR',
+      jdbcUrl: 'jdbc:oracle:thin:@//db.example.test:1521/ORCLPDB1',
+      options: { connectString: 'db.example.test:1521/ORCLPDB1', callTimeout: 45000 }
+    })
+  })
 })
 
 describe('ConnectionManager - detectPrimaryKey / executeMutations', () => {
@@ -241,7 +264,7 @@ describe('ConnectionManager - detectPrimaryKey / executeMutations', () => {
       detectPrimaryKey
     }
     const mgr = new ConnectionManager({
-      adapters: { mysql: adapter, postgresql: adapter, sqlite: adapter },
+      adapters: { mysql: adapter, postgresql: adapter, sqlite: adapter, oracle: adapter },
       credentialResolver: { decryptSecret: async () => '' },
       statusUpdater
     })
@@ -309,7 +332,7 @@ describe('ConnectionManager - detectPrimaryKey / executeMutations', () => {
       disconnect: async () => {}
     }
     const mgr = new ConnectionManager({
-      adapters: { mysql: noTxAdapter, postgresql: noTxAdapter, sqlite: noTxAdapter },
+      adapters: { mysql: noTxAdapter, postgresql: noTxAdapter, sqlite: noTxAdapter, oracle: noTxAdapter },
       credentialResolver: { decryptSecret: async () => '' },
       statusUpdater
     })

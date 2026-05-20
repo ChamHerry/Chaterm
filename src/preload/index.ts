@@ -309,7 +309,7 @@ const createAsset = async (data: { form: Record<string, unknown> }) => {
 
 interface DbAssetPayload {
   name: string
-  db_type: 'mysql' | 'postgresql' | 'sqlite'
+  db_type: 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
   host?: string | null
   port?: number | null
   file_path?: string | null
@@ -322,6 +322,7 @@ interface DbAssetPayload {
   environment?: string | null
   group_name?: string | null
   ssl_mode?: string | null
+  jdbc_url?: string | null
   options_json?: string | null
   tags_json?: string | null
   sort_order?: number

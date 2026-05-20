@@ -5,7 +5,7 @@ import Database from 'better-sqlite3'
 import { randomUUID } from 'crypto'
 const logger = createLogger('db')
 
-export type DbAssetType = 'mysql' | 'postgresql' | 'sqlite'
+export type DbAssetType = 'mysql' | 'postgresql' | 'sqlite' | 'oracle'
 export type DbAssetStatus = 'idle' | 'testing' | 'connected' | 'failed'
 export type DbAssetAuthType = 'password'
 export type DbAssetConnectionMode = 'readwrite' | 'readonly'
@@ -143,16 +143,32 @@ function normalizeConnectionMode(mode: DbAssetConnectionMode | null | undefined)
   return mode === 'readonly' ? 'readonly' : 'readwrite'
 }
 
-function validateDbAssetInput(input: Pick<DbAssetCreateInput, 'db_type' | 'host' | 'port' | 'file_path'>): void {
+function validateDbAssetInput(input: Pick<DbAssetCreateInput, 'db_type' | 'host' | 'port' | 'file_path' | 'jdbc_url'>): void {
   if (!input.db_type) throw new Error('db_type is required')
   if (input.db_type === 'sqlite') {
     if (!input.file_path?.trim()) throw new Error('file_path is required')
     return
   }
+  if (input.db_type === 'oracle' && input.jdbc_url?.trim()) return
   if (!input.host?.trim()) throw new Error('host is required')
   if (!Number.isFinite(input.port) || Number(input.port) <= 0 || Number(input.port) > 65535) {
     throw new Error('port must be 1..65535')
   }
+}
+
+function normalizeAssetHost(input: Pick<DbAssetCreateInput, 'db_type' | 'host' | 'jdbc_url'>): string | null {
+  if (input.db_type === 'sqlite') return null
+  const host = input.host?.trim()
+  if (host) return host
+  if (input.db_type === 'oracle' && input.jdbc_url?.trim()) return null
+  return ''
+}
+
+function normalizeAssetPort(input: Pick<DbAssetCreateInput, 'db_type' | 'port' | 'jdbc_url'>): number | null {
+  if (input.db_type === 'sqlite') return null
+  if (Number.isFinite(input.port) && Number(input.port) > 0) return Number(input.port)
+  if (input.db_type === 'oracle' && input.jdbc_url?.trim()) return null
+  return Number(input.port)
 }
 
 export function listDbAssetGroupsLogic(db: Database.Database, userId: number): DbAssetGroupRecord[] {
@@ -332,8 +348,8 @@ export function createDbAssetLogic(db: Database.Database, userId: number, input:
     group_name: group.group_name,
     db_type: input.db_type,
     environment: input.environment ?? null,
-    host: input.db_type === 'sqlite' ? null : (input.host ?? '').trim(),
-    port: input.db_type === 'sqlite' ? null : Number(input.port),
+    host: normalizeAssetHost(input),
+    port: normalizeAssetPort(input),
     file_path: input.db_type === 'sqlite' ? input.file_path!.trim() : null,
     connection_mode: input.db_type === 'sqlite' ? normalizeConnectionMode(input.connection_mode) : null,
     database_name: input.database_name ?? null,
@@ -406,8 +422,8 @@ export function updateDbAssetLogic(db: Database.Database, userId: number, id: st
     group_name: merged.group_name,
     db_type: merged.db_type,
     environment: merged.environment,
-    host: merged.db_type === 'sqlite' ? null : merged.host,
-    port: merged.db_type === 'sqlite' ? null : merged.port,
+    host: normalizeAssetHost(merged),
+    port: normalizeAssetPort(merged),
     file_path: merged.db_type === 'sqlite' ? (merged.file_path?.trim() ?? null) : null,
     connection_mode: merged.db_type === 'sqlite' ? normalizeConnectionMode(merged.connection_mode) : null,
     database_name: merged.database_name,
