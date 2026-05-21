@@ -2,14 +2,40 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 
-if (process.platform !== 'win32') {
+// Electron 41.5.2 win32-x64 ffmpeg.dll.
+// Keep this in sync with src/main/index.ts and the Windows package built by
+// scripts/docker-build-win-cn.sh.
+const KNOWN_WINDOWS_X64_FFMPEG_SHA256 = '9E6FD0CFB118760559137D85CB5F24C26F09182AB5758C4F93CF2290BE401B6E'
+
+function getArgValue(flag) {
+  const inline = process.argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (inline) return inline.slice(flag.length + 1)
+
+  const index = process.argv.indexOf(flag)
+  if (index === -1) return undefined
+
+  const value = process.argv[index + 1]
+  if (!value || value.startsWith('--')) {
+    console.error(`Missing value for ${flag}`)
+    process.exit(1)
+  }
+  return value
+}
+
+const targetArg = getArgValue('--file') || getArgValue('--path')
+const expectedHash = (getArgValue('--hash') || process.env.FFMPEG_SHA256 || KNOWN_WINDOWS_X64_FFMPEG_SHA256).toUpperCase()
+
+if (!/^[A-F0-9]{64}$/.test(expectedHash)) {
+  console.error(`Invalid SHA-256 hash: ${expectedHash}`)
+  process.exit(1)
+}
+
+if (!targetArg && process.platform !== 'win32') {
   console.log(`Skipping ffmpeg verification for non-Windows platform: ${process.platform}`)
   process.exit(0)
 }
 
-const KNOWN_HASH = 'E7AEC5CA86D80540EA30C5ACDF0A13ACB34D1D9DD0F9E78B36FB21776B711A1E'
-
-const ffmpegPath = path.join(__dirname, '../node_modules/electron/dist/ffmpeg.dll')
+const ffmpegPath = targetArg ? path.resolve(process.cwd(), targetArg) : path.join(__dirname, '../node_modules/electron/dist/ffmpeg.dll')
 
 console.log('Validating ffmpeg.dll integrity...')
 console.log(`Target: ${ffmpegPath}`)
@@ -25,9 +51,9 @@ try {
   hashSum.update(fileBuffer)
   const hex = hashSum.digest('hex').toUpperCase()
 
-  if (hex !== KNOWN_HASH) {
+  if (hex !== expectedHash) {
     console.error('❌ SECURITY ALERT: ffmpeg.dll hash mismatch!')
-    console.error(`Expected: ${KNOWN_HASH}`)
+    console.error(`Expected: ${expectedHash}`)
     console.error(`Actual:   ${hex}`)
     console.error('\nPOSSIBLE CAUSES:')
     console.error('1. Electron version changed (update the hash in scripts/verify-ffmpeg.js)')

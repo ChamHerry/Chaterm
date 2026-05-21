@@ -295,7 +295,8 @@ app.whenReady().then(async () => {
       try {
         const crypto = require('crypto')
         const ffmpegPath = path.join(path.dirname(process.execPath), 'ffmpeg.dll')
-        const KNOWN_HASH = 'E7AEC5CA86D80540EA30C5ACDF0A13ACB34D1D9DD0F9E78B36FB21776B711A1E'
+        // Electron 41.5.2 win32-x64 ffmpeg.dll. Keep in sync with scripts/verify-ffmpeg.js.
+        const KNOWN_WINDOWS_X64_FFMPEG_SHA256 = '9E6FD0CFB118760559137D85CB5F24C26F09182AB5758C4F93CF2290BE401B6E'
 
         try {
           await fs.access(ffmpegPath)
@@ -308,8 +309,8 @@ app.whenReady().then(async () => {
         const buffer = await fs.readFile(ffmpegPath)
         const hash = crypto.createHash('sha256').update(buffer).digest('hex').toUpperCase()
 
-        if (hash !== KNOWN_HASH) {
-          logger.error(`[Security] CRITICAL: ffmpeg.dll hash mismatch! Expected: ${KNOWN_HASH}, Actual: ${hash}`)
+        if (hash !== KNOWN_WINDOWS_X64_FFMPEG_SHA256) {
+          logger.error(`[Security] CRITICAL: ffmpeg.dll hash mismatch! Expected: ${KNOWN_WINDOWS_X64_FFMPEG_SHA256}, Actual: ${hash}`)
           const { dialog } = require('electron')
           dialog.showErrorBox(
             'Security Error',

@@ -28,6 +28,7 @@
     "build:unpack:cn": "npm run check:release-notes && npm run build:cn && electron-builder --dir --config electron-builder.cn.yml",
     "build:unpack:global": "npm run check:release-notes && npm run build:global && electron-builder --dir --config electron-builder.global.yml",
     "build:win:cn": "npm run check:release-notes && npm run build:cn && electron-builder --win --config electron-builder.cn.yml",
+    "build:win:cn:docker": "bash scripts/docker-build-win-cn.sh",
     "build:win:global": "npm run check:release-notes && npm run build:global && electron-builder --win --config electron-builder.global.yml",
     "build:mac:cn": "npm run check:release-notes && npm run build:cn && electron-builder --mac --config electron-builder.cn.yml",
     "build:mac:global": "npm run check:release-notes && npm run build:global && electron-builder --mac --config electron-builder.global.yml",

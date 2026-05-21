@@ -63,6 +63,7 @@ extraResources:
     filter: '**/*'
 asarUnpack:
   - resources/**
+  - node_modules/oracledb/**
 icon: resources/icon.ico
 win:
   executableName: Chaterm

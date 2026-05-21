@@ -119,6 +119,7 @@ export default defineConfig(({ mode }) => {
           external: [
             // Force externalize native modules to prevent bundling issues
             'chokidar',
+            'oracledb',
             'fsevents'
           ]
         }
