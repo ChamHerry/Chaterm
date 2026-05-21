@@ -1722,6 +1722,23 @@ export default {
     overviewColTime: 'Время',
     noExecutionsYet: 'Пока нет запусков.',
     closeResultTab: 'Закрыть вкладку результата',
+    fields: {
+      name: 'Имя',
+      env: 'Среда',
+      dbType: 'Тип БД',
+      host: 'Хост',
+      port: 'Порт',
+      user: 'Пользователь',
+      password: 'Пароль',
+      database: 'База данных',
+      oracleService: 'Имя службы / PDB',
+      oracleConnectString: 'Строка подключения',
+      filePath: 'Файл базы данных',
+      readonly: 'Только чтение',
+      readonlyHint: 'Открыть без прав на запись',
+      url: 'URL',
+      sslMode: 'Режим SSL'
+    },
     connectionMenu: {
       openConnection: 'Открыть соединение',
       closeConnection: 'Закрыть соединение',

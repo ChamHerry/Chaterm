@@ -1701,6 +1701,23 @@ export default {
     overviewColTime: '時間',
     noExecutionsYet: 'まだ実行履歴はありません。',
     closeResultTab: '結果タブを閉じる',
+    fields: {
+      name: '名前',
+      env: '環境',
+      dbType: 'データベースタイプ',
+      host: 'ホスト',
+      port: 'ポート',
+      user: 'ユーザー',
+      password: 'パスワード',
+      database: 'データベース',
+      oracleService: 'サービス名 / PDB',
+      oracleConnectString: '接続文字列',
+      filePath: 'データベースファイル',
+      readonly: '読み取り専用',
+      readonlyHint: '書き込み権限なしで開く',
+      url: 'URL',
+      sslMode: 'SSL モード'
+    },
     connectionMenu: {
       openConnection: '接続を開く',
       closeConnection: '接続を閉じる',

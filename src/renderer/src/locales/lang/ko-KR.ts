@@ -1693,6 +1693,23 @@ export default {
     overviewColTime: '소요 시간',
     noExecutionsYet: '아직 실행 기록이 없습니다.',
     closeResultTab: '결과 탭 닫기',
+    fields: {
+      name: '이름',
+      env: '환경',
+      dbType: '데이터베이스 유형',
+      host: '호스트',
+      port: '포트',
+      user: '사용자',
+      password: '비밀번호',
+      database: '데이터베이스',
+      oracleService: '서비스 이름 / PDB',
+      oracleConnectString: '연결 문자열',
+      filePath: '데이터베이스 파일',
+      readonly: '읽기 전용',
+      readonlyHint: '쓰기 권한 없이 열기',
+      url: 'URL',
+      sslMode: 'SSL 모드'
+    },
     connectionMenu: {
       openConnection: '연결 열기',
       closeConnection: '연결 닫기',

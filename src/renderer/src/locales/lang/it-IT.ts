@@ -1727,6 +1727,23 @@ export default {
     overviewColTime: 'Tempo',
     noExecutionsYet: 'Nessuna esecuzione finora.',
     closeResultTab: 'Chiudi scheda risultato',
+    fields: {
+      name: 'Nome',
+      env: 'Ambiente',
+      dbType: 'Tipo database',
+      host: 'Host',
+      port: 'Porta',
+      user: 'Utente',
+      password: 'Password',
+      database: 'Database',
+      oracleService: 'Nome servizio / PDB',
+      oracleConnectString: 'Stringa di connessione',
+      filePath: 'File database',
+      readonly: 'Sola lettura',
+      readonlyHint: 'Apri senza permessi di scrittura',
+      url: 'URL',
+      sslMode: 'Modalità SSL'
+    },
     connectionMenu: {
       openConnection: 'Apri connessione',
       closeConnection: 'Chiudi connessione',

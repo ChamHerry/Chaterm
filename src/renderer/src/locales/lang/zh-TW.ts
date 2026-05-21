@@ -1687,6 +1687,23 @@ export default {
     overviewColTime: '耗時',
     noExecutionsYet: '尚無執行紀錄。',
     closeResultTab: '關閉結果分頁',
+    fields: {
+      name: '名稱',
+      env: '環境',
+      dbType: '資料庫類型',
+      host: '主機',
+      port: '連接埠',
+      user: '使用者',
+      password: '密碼',
+      database: '資料庫',
+      oracleService: '服務名稱 / PDB',
+      oracleConnectString: '連線字串',
+      filePath: '資料庫檔案',
+      readonly: '唯讀',
+      readonlyHint: '以唯讀模式開啟',
+      url: 'URL',
+      sslMode: 'SSL 模式'
+    },
     connectionMenu: {
       openConnection: '開啟連線',
       closeConnection: '關閉連線',
