@@ -138,10 +138,25 @@ const props = defineProps({
     default: () => ({})
   }
 })
+const writeClipboardText = async (text: string): Promise<void> => {
+  if (window.api?.clipboardWriteText) {
+    try {
+      window.api.clipboardWriteText(text)
+      return
+    } catch (error) {
+      logger.warn('Electron clipboard write failed, falling back to navigator clipboard', { error })
+    }
+  }
+
+  await navigator.clipboard.writeText(text)
+}
+
 const onContextMenuAction = (action) => {
   switch (action) {
     case 'copy':
-      navigator.clipboard.writeText(props.copyText)
+      writeClipboardText(props.copyText).catch(() => {
+        logger.warn('Failed to copy to clipboard')
+      })
       break
     case 'paste':
       emit('contextAct', 'paste')

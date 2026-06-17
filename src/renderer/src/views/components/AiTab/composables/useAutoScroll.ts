@@ -11,6 +11,17 @@ const _isResizing = ref(false)
 let _resizeEndTimer: ReturnType<typeof setTimeout> | null = null
 const RESIZE_END_DELAY = 200
 
+const requestNextFrame = (callback: FrameRequestCallback) => {
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    return window.requestAnimationFrame(callback)
+  }
+
+  return setTimeout(() => {
+    const timestamp = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    callback(timestamp)
+  }, 0)
+}
+
 /**
  * Signal that a panel resize is in progress.
  * Call with `true` on every resize event; the flag auto-resets
@@ -88,12 +99,12 @@ export function useAutoScroll(options: AutoScrollOptions = {}) {
 
   const executeScroll = () => {
     isProgrammaticScroll.value = true
-    requestAnimationFrame(() => {
+    requestNextFrame(() => {
       const el = getElement(chatContainer.value)
       if (el instanceof HTMLElement) {
         el.scrollTop = el.scrollHeight
         // Reset flag after a short delay to allow scroll event to fire
-        requestAnimationFrame(() => {
+        requestNextFrame(() => {
           setTimeout(() => {
             isProgrammaticScroll.value = false
           }, 100)
@@ -118,7 +129,7 @@ export function useAutoScroll(options: AutoScrollOptions = {}) {
 
     const finish = () => {
       // Release the flag after the last scroll event has had a chance to fire.
-      requestAnimationFrame(() => {
+      requestNextFrame(() => {
         setTimeout(() => {
           isProgrammaticScroll.value = false
         }, 100)
@@ -153,15 +164,15 @@ export function useAutoScroll(options: AutoScrollOptions = {}) {
 
       if (retryCount < maxRetries) {
         setTimeout(() => {
-          requestAnimationFrame(attemptScroll)
+          requestNextFrame(attemptScroll)
         }, delay)
       } else {
         finish()
       }
     }
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(attemptScroll)
+    requestNextFrame(() => {
+      requestNextFrame(attemptScroll)
     })
   }
 

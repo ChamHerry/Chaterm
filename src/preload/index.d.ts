@@ -426,6 +426,7 @@ interface ApiType {
     id: string,
     callback: (data?: { reason: 'manual' | 'network' | 'unknown'; isNetworkDisconnect: boolean; errorCode?: string; errorMessage?: string }) => void
   ) => () => void
+  clipboardWriteText: (text: string) => void
   recordTerminalState: (params: any) => Promise<any>
   recordCommand: (params: any) => Promise<any>
   sshSftpList: (opts: { id: string; path: string }) => Promise<any>

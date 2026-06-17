@@ -159,6 +159,34 @@ describe('useAutoScroll', () => {
 
       expect(() => scrollToBottomWithRetry()).not.toThrow()
     })
+
+    it('should handle missing requestAnimationFrame gracefully', () => {
+      vi.restoreAllMocks()
+      const originalRequestAnimationFrame = window.requestAnimationFrame
+      vi.stubGlobal('requestAnimationFrame', undefined)
+      Object.defineProperty(window, 'requestAnimationFrame', {
+        value: undefined,
+        writable: true,
+        configurable: true
+      })
+      vi.useFakeTimers()
+
+      try {
+        const { scrollToBottomWithRetry, chatContainer } = useAutoScroll()
+        chatContainer.value = mockContainer
+
+        expect(() => scrollToBottomWithRetry(2, 10)).not.toThrow()
+        expect(() => vi.runAllTimers()).not.toThrow()
+        expect(mockContainer.scrollTop).toBe(1000)
+      } finally {
+        vi.useRealTimers()
+        Object.defineProperty(window, 'requestAnimationFrame', {
+          value: originalRequestAnimationFrame,
+          writable: true,
+          configurable: true
+        })
+      }
+    })
   })
 
   describe('initializeAutoScroll', () => {

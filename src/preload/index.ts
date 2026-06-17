@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { clipboard, contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { WebviewMessage } from '../main/agent/shared/WebviewMessage'
 import type { ChatermMessagesPage } from '../main/agent/shared/ExtensionMessage'
@@ -1203,6 +1203,7 @@ const api = {
     ipcRenderer.on(`ssh:shell:close:${id}`, listener)
     return () => ipcRenderer.removeListener(`ssh:shell:close:${id}`, listener)
   },
+  clipboardWriteText: (text: string) => clipboard.writeText(text),
   recordTerminalState: (params) => ipcRenderer.invoke('ssh:recordTerminalState', params),
   recordCommand: (params) => ipcRenderer.invoke('ssh:recordCommand', params),
 

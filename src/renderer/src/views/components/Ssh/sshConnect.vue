@@ -172,6 +172,19 @@ const isTransparent = computed(() => !!configStore.getUserConfig.background.imag
 const hasCustomBg = (): boolean => isTransparent.value === true
 let viewportScrollbarHideTimer: number | null = null
 
+const writeClipboardText = async (text: string): Promise<void> => {
+  if (window.api?.clipboardWriteText) {
+    try {
+      window.api.clipboardWriteText(text)
+      return
+    } catch (error) {
+      logger.warn('Electron clipboard write failed, falling back to navigator clipboard', { error })
+    }
+  }
+
+  await navigator.clipboard.writeText(text)
+}
+
 // Coalesced scrollToBottom: uses requestAnimationFrame for smooth alignment with browser repaint
 let scrollToBottomScheduled = false
 let scrollToBottomNeedsFocus = false
@@ -534,7 +547,7 @@ onMounted(async () => {
     if (termInstance.hasSelection()) {
       copyText.value = termInstance.getSelection()
       if (copyText.value.trim()) {
-        navigator.clipboard.writeText(copyText.value.trim()).catch(() => {
+        writeClipboardText(copyText.value.trim()).catch(() => {
           logger.warn('Failed to copy to clipboard')
         })
       }
