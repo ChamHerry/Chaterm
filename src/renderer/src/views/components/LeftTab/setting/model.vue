@@ -194,6 +194,44 @@
 
           <div class="setting-item">
             <a-form-item
+              :label="$t('user.openAiContextWindow')"
+              :label-col="{ span: 24 }"
+              :wrapper-col="{ span: 24 }"
+            >
+              <a-input
+                v-model:value="openAiContextWindow"
+                type="number"
+                min="1"
+                step="1000"
+                :placeholder="$t('user.openAiContextWindowPh')"
+              />
+              <p class="setting-description-no-padding">
+                {{ $t('user.openAiContextWindowDescribe') }}
+              </p>
+            </a-form-item>
+          </div>
+
+          <div class="setting-item">
+            <a-form-item
+              :label="$t('user.openAiMaxTokens')"
+              :label-col="{ span: 24 }"
+              :wrapper-col="{ span: 24 }"
+            >
+              <a-input
+                v-model:value="openAiMaxTokens"
+                type="number"
+                min="-1"
+                step="1000"
+                :placeholder="$t('user.openAiMaxTokensPh')"
+              />
+              <p class="setting-description-no-padding">
+                {{ $t('user.openAiMaxTokensDescribe') }}
+              </p>
+            </a-form-item>
+          </div>
+
+          <div class="setting-item">
+            <a-form-item
               :label="$t('user.model')"
               :label-col="{ span: 24 }"
               :wrapper-col="{ span: 24 }"
@@ -626,6 +664,8 @@ const openAiBaseUrl = ref('https://api.openai.com/v1')
 const openAiApiKey = ref('')
 const openAiModelId = ref('')
 const openAiApiFormat = ref<'chat-completions' | 'responses'>('chat-completions')
+const openAiContextWindow = ref('128000')
+const openAiMaxTokens = ref('-1')
 const ollamaBaseUrl = ref('http://localhost:11434')
 const ollamaModelId = ref('')
 const checkLoadingLiteLLM = ref(false)
@@ -673,6 +713,23 @@ const getEnterpriseModelNameByProvider = (configs: EnterpriseModelConfig[], prov
   return configs.find((config) => config.provider === provider)?.modelName || ''
 }
 
+const normalizePositiveInteger = (value: string, fallback: number): number => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
+
+const normalizeMaxTokens = (value: string): number => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : -1
+}
+
+const buildOpenAiModelInfo = (existing?: Record<string, unknown>) => ({
+  ...(existing ?? {}),
+  apiFormat: openAiApiFormat.value,
+  contextWindow: normalizePositiveInteger(openAiContextWindow.value, 128000),
+  maxTokens: normalizeMaxTokens(openAiMaxTokens.value)
+})
+
 // Load saved configuration
 const loadSavedConfig = async () => {
   try {
@@ -707,6 +764,12 @@ const loadSavedConfig = async () => {
     const savedModelInfo = (await getGlobalState('openAiModelInfo')) as Record<string, unknown> | undefined
     if (savedModelInfo?.apiFormat) {
       openAiApiFormat.value = savedModelInfo.apiFormat as 'chat-completions' | 'responses'
+    }
+    if (typeof savedModelInfo?.contextWindow === 'number' && savedModelInfo.contextWindow > 0) {
+      openAiContextWindow.value = String(savedModelInfo.contextWindow)
+    }
+    if (typeof savedModelInfo?.maxTokens === 'number') {
+      openAiMaxTokens.value = String(savedModelInfo.maxTokens)
     }
     awsEndpointSelected.value = ((await getGlobalState('awsEndpointSelected')) as boolean) || false
     // Ollama information
@@ -786,7 +849,8 @@ const saveOpenAiConfig = async () => {
   try {
     await updateGlobalState('openAiBaseUrl', openAiBaseUrl.value)
     await storeSecret('openAiApiKey', openAiApiKey.value)
-    await updateGlobalState('openAiModelInfo', { apiFormat: openAiApiFormat.value })
+    const savedModelInfo = (await getGlobalState('openAiModelInfo')) as Record<string, unknown> | undefined
+    await updateGlobalState('openAiModelInfo', buildOpenAiModelInfo(savedModelInfo))
   } catch (error) {
     logger.error('Failed to save OpenAI config', { error: error })
     notification.error({
@@ -920,7 +984,7 @@ const handleCheck = async (provider: string): Promise<void> => {
         openAiBaseUrl: openAiBaseUrl.value,
         openAiApiKey: openAiApiKey.value,
         openAiModelId: openAiModelId.value,
-        openAiModelInfo: { apiFormat: openAiApiFormat.value }
+        openAiModelInfo: buildOpenAiModelInfo()
       }
       break
     case 'ollama':
