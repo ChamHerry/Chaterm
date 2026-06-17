@@ -34,6 +34,7 @@ if [[ "$CLEAN_DIST" != "0" ]]; then
   log "Cleaning previous Windows CN build artifacts"
   rm -rf dist/cn/win-unpacked
   rm -f dist/cn/*-cn-setup-*.exe dist/cn/*-cn-setup-*.exe.blockmap
+  rm -f dist/cn/*-cn-portable-*.exe dist/cn/*.nsis.7z dist/cn/*.nsis.7z.blockmap
 fi
 
 log "Using Docker image: ${DOCKER_IMAGE} (${DOCKER_PLATFORM})"
@@ -63,7 +64,12 @@ echo "Installing Windows x64 better-sqlite3 prebuild for Electron ${ELECTRON_VER
   npx prebuild-install -r electron -t "${ELECTRON_VERSION}" --platform win32 --arch x64 --force
 )
 
-npx electron-builder --win --config electron-builder.cn.yml --publish never
+# Build the Windows CN portable executable. On Apple Silicon Docker runs the
+# linux/amd64 builder image through emulation, and Wine crashes when the default
+# NSIS installer path runs Windows helper executables for resource editing and
+# uninstaller generation. The portable target plus disabled executable resource
+# editing avoids that Wine/QEMU path while still producing a Windows .exe.
+npx electron-builder --win portable --config electron-builder.cn.yml --publish never -c.win.signAndEditExecutable=false
 
 node scripts/verify-ffmpeg.js --file dist/cn/win-unpacked/ffmpeg.dll
 
@@ -104,7 +110,12 @@ assertMZ(path.join(oracleReleaseDir, oracleWinBinary))
 console.log('Packaged dependency verification passed')
 NODE
 
-ls -lh dist/cn/*-cn-setup-*.exe dist/cn/*-cn-setup-*.exe.blockmap
+mapfile -t build_artifacts < <(find dist/cn -maxdepth 1 -type f \( -name '*-cn-setup-*.exe' -o -name '*-cn-portable-*.exe' \) -print | sort)
+if [[ "${#build_artifacts[@]}" -eq 0 ]]; then
+  echo "No Windows CN exe artifact was produced in dist/cn." >&2
+  exit 1
+fi
+ls -lh "${build_artifacts[@]}"
 
 if [[ -n "${HOST_UID:-}" && -n "${HOST_GID:-}" ]]; then
   chown -R "${HOST_UID}:${HOST_GID}" dist/cn out 2>/dev/null || true
@@ -126,4 +137,4 @@ docker run --rm --platform "$DOCKER_PLATFORM" \
   "$DOCKER_IMAGE" \
   /bin/bash -lc "$container_script"
 
-log "Done. Windows CN installer is in dist/cn/"
+log "Done. Windows CN exe is in dist/cn/"

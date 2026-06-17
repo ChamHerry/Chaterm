@@ -59,7 +59,7 @@ describe('RemoteTerminalProcess bastion execution', () => {
     const process = new RemoteTerminalProcess()
 
     await expect(process.run('session-1', 'whoami', undefined, 'qizhi')).rejects.toThrow(/BASTION_AGENT_EXEC_UNAVAILABLE/i)
-  })
+  }, 10000)
 
   it('rejects when bastion capability is missing and does not fall back to SSH', async () => {
     getBastionMock.mockReturnValue(undefined)

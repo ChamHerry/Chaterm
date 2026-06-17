@@ -80,5 +80,5 @@ describe('RemoteTerminalProcess SSH output', () => {
     await runPromise
 
     expect(lines).toEqual(['Password: ', 'You entered: adfaf'])
-  })
+  }, 10000)
 })

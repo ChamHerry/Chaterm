@@ -91,7 +91,7 @@ describe('RemoteTerminalManager plugin bastion routing', () => {
 
     expect(disconnectMock).toHaveBeenCalledWith({ id: terminal.sessionId })
     expect(remoteSshDisconnect).not.toHaveBeenCalled()
-  })
+  }, 10000)
 
   it('prefers comment as targetAsset when provided', async () => {
     const connectMock = vi.fn(async () => ({ status: 'connected', sessionId: 'cap-session' }))

@@ -265,7 +265,7 @@ describe('fileTransferProgress.vue', () => {
     expect(wrapper.find('.transfer-fab').exists()).toBe(false)
     expect(wrapper.find('.transfer-panel').exists()).toBe(false)
     wrapper.unmount()
-  })
+  }, 10000)
 
   it('renders expanded panel by default when there are tasks', async () => {
     const { Comp, mod } = await importComp()

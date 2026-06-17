@@ -30,21 +30,27 @@ This document is intended for "AI coding agents/Agent tools" (such as the built-
 ## Behavioral Rules
 
 ### Rule 1 — Think Before Coding
+
 State assumptions explicitly. If uncertain, ask rather than guess. Push back when a simpler approach exists. Stop when confused — name what's unclear.
 
 ### Rule 2 — Simplicity First
+
 Minimum code that solves the problem. No speculative features. No abstractions for single-use code. If a senior engineer would call it overcomplicated, simplify.
 
 ### Rule 3 — Surgical Changes
+
 Touch only what you must. Don't "improve" adjacent code, comments, or formatting. Don't refactor what isn't broken. Match existing style.
 
 ### Rule 7 — Surface Conflicts, Don't Average Them
+
 If two existing patterns contradict, pick one (more recent / more tested), explain why, and flag the other for cleanup. Don't blend conflicting patterns.
 
 ### Rule 8 — Read Before You Write
+
 Before adding code in a file, read its exports, the immediate caller, and any obvious shared utilities. "Looks orthogonal to me" is dangerous — if unsure why code is structured a certain way, ask.
 
 ### Rule 12 — Fail Loud
+
 "Completed" is wrong if anything was skipped silently. "Tests pass" is wrong if any were skipped. Default to surfacing uncertainty, not hiding it.
 
 ## Basic Principles (Required Reading for Agents)
@@ -190,3 +196,50 @@ All log output is processed by the sanitizer (`src/main/services/logging/sanitiz
 - Committing code containing sensitive information or environment-specific paths.
 
 If further clarification is needed or uncertain scenarios are encountered, please briefly document your assumptions and trade-offs in the PR/change description to help human reviewers understand and make decisions.
+
+<!-- gitnexus:start -->
+
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **Chaterm** (56643 symbols, 148612 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
+- For control/data dependence, `pdg_query({mode: "controls", target: "fileOrSymbol"})` answers "under what condition does X run?" (CDG, incl. guard clauses) and `pdg_query({mode: "flows", target, variable})` traces "where does variable Y flow?" (REACHING_DEF). `--pdg` layer.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit changes without running `detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource                                 | Use for                                  |
+| ---------------------------------------- | ---------------------------------------- |
+| `gitnexus://repo/Chaterm/context`        | Codebase overview, check index freshness |
+| `gitnexus://repo/Chaterm/clusters`       | All functional areas                     |
+| `gitnexus://repo/Chaterm/processes`      | All execution flows                      |
+| `gitnexus://repo/Chaterm/process/{name}` | Step-by-step execution trace             |
+
+## CLI
+
+| Task                                         | Read this skill file                                        |
+| -------------------------------------------- | ----------------------------------------------------------- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md`       |
+| Blast radius / "What breaks if I change X?"  | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?"             | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md`       |
+| Rename / extract / split / refactor          | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md`     |
+| Tools, resources, schema reference           | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md`           |
+| Index, status, clean, wiki CLI commands      | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md`             |
+
+<!-- gitnexus:end -->

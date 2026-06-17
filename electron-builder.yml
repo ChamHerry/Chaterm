@@ -63,6 +63,8 @@ extraResources:
     filter: '**/*'
 asarUnpack:
   - resources/**
+  - node_modules/better-sqlite3/**
+  - node_modules/node-pty/**
   - node_modules/oracledb/**
 icon: resources/icon.ico
 win:

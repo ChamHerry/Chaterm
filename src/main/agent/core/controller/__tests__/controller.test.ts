@@ -407,7 +407,7 @@ describe('Controller', () => {
       explanation: '列出目录详细信息（含隐藏文件）'
     })
     expect(createMessage).toHaveBeenCalledTimes(1)
-    expect(createMessage.mock.calls[0][0]).toContain('Chinese')
+    expect((createMessage.mock.calls[0][0] as { systemPrompt: string }).systemPrompt).toContain('Chinese')
   })
 
   it('handleAiSuggestCommand should return command with English explanation for non-zh clients', async () => {
@@ -435,7 +435,7 @@ describe('Controller', () => {
       explanation: 'Find log files recursively'
     })
     expect(createMessage).toHaveBeenCalledTimes(1)
-    expect(createMessage.mock.calls[0][0]).toContain('English')
+    expect((createMessage.mock.calls[0][0] as { systemPrompt: string }).systemPrompt).toContain('English')
   })
 
   it('handleAiSuggestCommand should truncate overly long explanation for compact UI display', async () => {

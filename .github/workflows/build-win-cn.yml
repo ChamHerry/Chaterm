@@ -1,0 +1,138 @@
+name: Build Windows CN
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip lint, typecheck, and tests'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  # Trigger on push to main when relevant files change
+  push:
+    branches:
+      - main
+      - release/*
+    paths:
+      - 'src/**'
+      - 'resources/**'
+      - 'migrations/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'electron-builder.yml'
+      - 'electron-builder.cn.yml'
+      - 'electron.vite.config.ts'
+      - '.github/workflows/build-win-cn.yml'
+
+concurrency:
+  group: build-win-cn-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          node scripts/patch-package-lock.js
+          npm ci
+        env:
+          HUSKY: 0
+
+      - name: Lint, typecheck and test
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: npm run lint && npm run typecheck && npm test
+
+      - name: Verify ffmpeg
+        run: npm run check:ffmpeg
+
+      - name: Verify external deps
+        run: npm run check:external-deps
+
+      - name: Check release notes
+        run: npm run check:release-notes
+
+      - name: Build CN edition
+        run: npm run build:cn
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          APP_EDITION: cn
+
+      - name: Package Windows installer
+        run: npx electron-builder --win --config electron-builder.cn.yml --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify packaged artifacts
+        shell: pwsh
+        run: |
+          $unpackedDir = "dist\cn\win-unpacked"
+          if (-not (Test-Path $unpackedDir)) {
+            Write-Error "win-unpacked directory not found"
+            exit 1
+          }
+
+          # Verify better-sqlite3 native binary is unpacked
+          $sqliteNode = Get-ChildItem -Path $unpackedDir -Recurse -Filter "better_sqlite3.node" | Select-Object -First 1
+          if ($null -eq $sqliteNode) {
+            Write-Error "better_sqlite3.node not found in unpacked directory - asarUnpack may be misconfigured"
+            exit 1
+          }
+          Write-Host "OK: better_sqlite3.node found at $($sqliteNode.FullName)"
+
+          # Verify oracledb native binary is unpacked
+          $oracleNode = Get-ChildItem -Path $unpackedDir -Recurse -Filter "oracledb-*.node" | Select-Object -First 1
+          if ($null -eq $oracleNode) {
+            Write-Error "oracledb native binary not found in unpacked directory"
+            exit 1
+          }
+          Write-Host "OK: oracledb native binary found at $($oracleNode.FullName)"
+
+          # Verify node-pty native binary is unpacked
+          $ptyNode = Get-ChildItem -Path $unpackedDir -Recurse -Filter "pty.node" | Select-Object -First 1
+          if ($null -eq $ptyNode) {
+            Write-Error "pty.node not found in unpacked directory - node-pty asarUnpack may be misconfigured"
+            exit 1
+          }
+          Write-Host "OK: pty.node found at $($ptyNode.FullName)"
+
+          # Verify ffmpeg.dll
+          if (-not (Test-Path "$unpackedDir\ffmpeg.dll")) {
+            Write-Error "ffmpeg.dll not found in win-unpacked"
+            exit 1
+          }
+          Write-Host "OK: ffmpeg.dll found"
+
+          Write-Host "`nAll packaged dependency verifications passed"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaterm-cn-win-x64-installer
+          path: dist/cn/*-cn-setup-*.exe
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload blockmap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaterm-cn-win-x64-blockmap
+          path: dist/cn/*-cn-setup-*.exe.blockmap
+          retention-days: 14
+          if-no-files-found: warn

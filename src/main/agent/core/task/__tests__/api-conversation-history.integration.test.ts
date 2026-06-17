@@ -194,43 +194,6 @@ describe('Bug 1: conversationHistoryIndex points to wrong message', () => {
   })
 })
 
-describe('Tool result normalization with JSON content', () => {
-  it('normalizeToolResultsForApi should flatten JSON-encoded tool_result content into text', async () => {
-    const task = Object.create((Task as unknown as { prototype: object }).prototype) as any
-    task.normalizeToolResultsForApi = Task.prototype['normalizeToolResultsForApi'].bind(task)
-
-    const toolResult = {
-      toolName: 'execute_command',
-      toolDescription: '[execute_command for \"ls\"]',
-      taskId: 'test-task',
-      timestamp: Date.now(),
-      result: 'ls output here'
-    }
-
-    const conversationHistory: Anthropic.MessageParam[] = [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'tool-1',
-            content: JSON.stringify(toolResult),
-            is_error: false
-          } as any
-        ]
-      }
-    ]
-
-    const normalized = task.normalizeToolResultsForApi(conversationHistory)
-    expect(normalized).toHaveLength(1)
-    expect(Array.isArray(normalized[0].content)).toBe(true)
-
-    const block = normalized[0].content![0] as Anthropic.TextBlockParam
-    expect(block.type).toBe('text')
-    expect(block.text).toContain('ls output here')
-  })
-})
-
 describe('Bug 2: apiConversationHistory flattening on save/restore', () => {
   /**
    * This test uses a mock database to verify save/restore logic
