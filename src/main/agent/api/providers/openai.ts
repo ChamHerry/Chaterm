@@ -153,6 +153,12 @@ export class OpenAiHandler implements ApiHandler {
       stream: true,
       stream_options: { include_usage: true }
     })
+    // Some OpenAI-compatible endpoints (e.g. minimax behind aiproxy) attach a
+    // cumulative `usage` to EVERY streamed chunk instead of only the final one.
+    // Remember the latest usage and emit it once after the stream ends, so the
+    // caller (Task.handleUsageChunk sums every usage chunk) does not inflate
+    // token counts and spuriously trigger context truncation.
+    let lastUsage: { prompt_tokens?: number; completion_tokens?: number } | null = null
     const toolCallAccumulator = new OpenAiToolCallStreamAccumulator()
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta
@@ -172,11 +178,7 @@ export class OpenAiHandler implements ApiHandler {
       }
 
       if (chunk.usage) {
-        yield {
-          type: 'usage',
-          inputTokens: chunk.usage.prompt_tokens || 0,
-          outputTokens: chunk.usage.completion_tokens || 0
-        }
+        lastUsage = chunk.usage
       }
     }
 
@@ -185,6 +187,14 @@ export class OpenAiHandler implements ApiHandler {
         yield { type: 'invalid_tool_call', id: toolCall.id, name: toolCall.name, rawArguments: toolCall.rawArguments, error: toolCall.error }
       } else {
         yield { type: 'tool_call', toolCall }
+      }
+    }
+
+    if (lastUsage) {
+      yield {
+        type: 'usage',
+        inputTokens: lastUsage.prompt_tokens || 0,
+        outputTokens: lastUsage.completion_tokens || 0
       }
     }
   }
