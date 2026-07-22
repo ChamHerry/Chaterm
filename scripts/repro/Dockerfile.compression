@@ -1,0 +1,40 @@
+# Reproduction image for the AI context-compression / truncation chain.
+# The repro test uses the real OpenAiHandler but never imports ContextManager / disk.ts,
+# so no sqlite / node-pty native build is required -> we skip postinstall scripts.
+#
+# Build:
+#   docker build -t chaterm-compression-repro -f scripts/repro/Dockerfile.compression .
+# Run (pass creds via env, never bake them into the image):
+#   docker run --rm \
+#     -e REPRO_COMPRESSION=1 \
+#     -e REPRO_API_KEY=sk-... \
+#     -e REPRO_MODEL=minimax-m2.7 \
+#     -e REPRO_BASE_URL=https://aiproxy.si-tech.com.cn/api/v1/openai/v1 \
+#     -e REPRO_CONTEXT_WINDOW=128000 \
+#     -e REPRO_MAX_TOKENS=32000 \
+#     chaterm-compression-repro
+
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+# electron's index.js throws if its binary is absent (we used --ignore-scripts, which
+# skips electron's postinstall). Pointing ELECTRON_OVERRIDE_DIST_PATH at /tmp makes
+# require('electron') return a path string instead of throwing; electron-log then
+# degrades gracefully outside a real electron runtime (same as on the host vitest run).
+ENV ELECTRON_OVERRIDE_DIST_PATH=/tmp
+
+# Minimal build toolchain (only in case a pure-JS dep needs it); ca-certificates for HTTPS.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies first for layer caching. Follow the project's lockfile patch step.
+COPY package.json package-lock.json* ./
+COPY scripts/patch-package-lock.js ./scripts/patch-package-lock.js
+RUN node scripts/patch-package-lock.js && npm install --ignore-scripts
+
+# Copy the rest of the source.
+COPY . .
+
+CMD ["npx", "vitest", "run", "src/main/agent/core/context/__tests__/compression-repro.test.ts", "--coverage=false"]

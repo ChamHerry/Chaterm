@@ -1,0 +1,12 @@
+node_modules
+.git
+.gitnexus
+dist
+out
+release
+build
+coverage
+.vscode
+.idea
+*.log
+.DS_Store
