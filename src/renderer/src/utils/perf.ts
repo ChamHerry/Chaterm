@@ -86,6 +86,8 @@ export async function reportMarksToMainAsync(): Promise<void> {
  * Uses console.log intentionally for developer tooling output.
  */
 export function logRendererTimeline(): void {
+  if (!import.meta.env.DEV) return
+
   const sorted = getMarks()
   if (sorted.length === 0) return
 

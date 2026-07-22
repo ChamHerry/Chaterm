@@ -172,10 +172,12 @@ export function registerLogIpcHandler(): void {
  * Must be called early in the main process startup.
  */
 export function initLogging(): void {
-  RAW_CONSOLE.info(
-    `[logging] Initialized: level=${DEFAULT_CONFIG.level}, enabled=${DEFAULT_CONFIG.enabled}, ` +
-      `retention=${DEFAULT_CONFIG.retentionDays}d, maxFile=${DEFAULT_CONFIG.maxFileSizeMB}MB, maxTotal=${DEFAULT_CONFIG.maxTotalSizeMB}MB`
-  )
+  if (!app.isPackaged || process.env.CHATERM_DEBUG === '1') {
+    RAW_CONSOLE.info(
+      `[logging] Initialized: level=${DEFAULT_CONFIG.level}, enabled=${DEFAULT_CONFIG.enabled}, ` +
+        `retention=${DEFAULT_CONFIG.retentionDays}d, maxFile=${DEFAULT_CONFIG.maxFileSizeMB}MB, maxTotal=${DEFAULT_CONFIG.maxTotalSizeMB}MB`
+    )
+  }
 
   // Pre-create unified logger
   getOrCreateLogger()

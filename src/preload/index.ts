@@ -44,7 +44,7 @@ if (!fs.existsSync(envPath)) {
 }
 
 // Load environment variables
-dotenv.config({ path: envPath })
+dotenv.config({ path: envPath, quiet: true })
 
 // Global variable to track vim mode state
 let isVimMode = false
@@ -80,7 +80,7 @@ const envSpecificPath = path.resolve(__dirname, `../../build/.env.${nodeEnv}`)
 const envContent: Record<string, string> = {}
 
 if (fs.existsSync(envSpecificPath)) {
-  dotenv.config({ path: envSpecificPath })
+  dotenv.config({ path: envSpecificPath, quiet: true })
 
   try {
     const fileContent = fs.readFileSync(envSpecificPath, 'utf8')
