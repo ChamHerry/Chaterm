@@ -2,9 +2,11 @@
 //  This source code is licensed under the GPL-3.0
 
 import { Worker } from 'worker_threads'
+import { createRequire } from 'module'
 import type { ConnectionTestResult, DatabaseDriverAdapter, QueryResult, ResolvedDbCredential } from '../types'
 
 const logger = createLogger('db')
+const requireFromSqliteDriver = createRequire(__filename)
 
 const SQLITE_TIMEOUT_MS = 5_000
 
@@ -36,8 +38,25 @@ interface SqliteColumnRow {
 }
 
 const SQLITE_WORKER_SOURCE = `
-const { parentPort } = require('worker_threads')
+const { parentPort, workerData } = require('worker_threads')
 let db = null
+
+function loadBetterSqlite3() {
+  const candidates = [
+    workerData && workerData.betterSqlite3ModulePath,
+    'better-sqlite3'
+  ].filter(Boolean)
+
+  let lastError = null
+  for (const candidate of candidates) {
+    try {
+      return require(candidate)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError || new Error('Cannot load better-sqlite3')
+}
 
 function callWithParams(stmt, params, mode) {
   if (!Array.isArray(params) || params.length === 0) {
@@ -84,7 +103,7 @@ parentPort.on('message', (message) => {
     .then(() => {
       if (method === 'open') {
         closeDb()
-        const Database = require('better-sqlite3')
+        const Database = loadBetterSqlite3()
         const input = args[0] || {}
         db = new Database(input.filePath, {
           readonly: Boolean(input.readonly),
@@ -116,6 +135,10 @@ parentPort.on('message', (message) => {
 })
 `
 
+function resolveBetterSqlite3ModulePath(): string {
+  return requireFromSqliteDriver.resolve('better-sqlite3')
+}
+
 class SqliteWorkerConnection {
   private worker: Worker
   private seq = 0
@@ -123,7 +146,12 @@ class SqliteWorkerConnection {
   private closed = false
 
   constructor() {
-    this.worker = new Worker(SQLITE_WORKER_SOURCE, { eval: true })
+    this.worker = new Worker(SQLITE_WORKER_SOURCE, {
+      eval: true,
+      workerData: {
+        betterSqlite3ModulePath: resolveBetterSqlite3ModulePath()
+      }
+    })
     this.worker.on('message', (response: SqliteWorkerResponse) => this.handleResponse(response))
     this.worker.on('error', (error) => this.rejectAll(error instanceof Error ? error : new Error(String(error))))
     this.worker.on('exit', (code) => {
@@ -314,4 +342,4 @@ export async function fetchSqliteTableDdl(handle: unknown, databaseName: string,
   return typeof ddl === 'string' ? ddl : ''
 }
 
-export const __testing = { quoteSqliteIdentifier, SqliteWorkerConnection }
+export const __testing = { quoteSqliteIdentifier, resolveBetterSqlite3ModulePath, SqliteWorkerConnection }

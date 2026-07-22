@@ -3,7 +3,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import Database from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SqliteDriverAdapter, fetchSqliteTableDdl } from '../drivers/sqlite-driver'
+import { __testing, SqliteDriverAdapter, fetchSqliteTableDdl } from '../drivers/sqlite-driver'
 import type { ResolvedDbCredential } from '../types'
 
 vi.mock('@logging/index', () => ({
@@ -54,6 +54,10 @@ describe('SqliteDriverAdapter', () => {
 
     const missing = await adapter.testConnection(credential({ filePath: join(dir, 'missing.sqlite3') }))
     expect(missing.ok).toBe(false)
+  })
+
+  it('resolves better-sqlite3 before starting the eval worker', () => {
+    expect(__testing.resolveBetterSqlite3ModulePath()).toMatch(/better-sqlite3/)
   })
 
   it('lists database aliases, tables, columns and primary keys', async () => {
