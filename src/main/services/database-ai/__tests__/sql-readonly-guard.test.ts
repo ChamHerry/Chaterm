@@ -1224,3 +1224,38 @@ describe('isReadOnlySql - compatibility wrapper', () => {
     if (!r.ok) expect(r.errorCode).toBe('E_LOCKING_READ')
   })
 })
+
+describe('classifySql - local oracle/sqlite dialect x tri-state interaction', () => {
+  it('strips Oracle q-quoted literals so embedded quotes do not confuse a write verb', () => {
+    // The Oracle q-quote contribution predates the tri-state classifier; the
+    // embedded single quote inside the literal must not turn UPDATE into an
+    // unterminated-literal escape.
+    const d = classifySql("UPDATE t SET a = q'[it''s]'", 'oracle')
+    expect(d.kind).toBe('requires_approval')
+    if (d.kind === 'requires_approval') expect(d.operation).toBe('dml')
+  })
+
+  it('does not treat locking keywords inside an Oracle q-quoted literal as a locking read', () => {
+    // "FOR UPDATE" appears only inside the quoted literal; after q-quote
+    // stripping the skeleton carries no locking clause, so a plain SELECT
+    // must remain readonly.
+    const d = classifySql("SELECT q'[hello FOR UPDATE world]' AS note FROM dual", 'oracle')
+    expect(d.kind).toBe('readonly')
+  })
+
+  it('classifies Oracle q-quoted literal SELECTs as readonly', () => {
+    expect(classifySql("SELECT q'[bracketed]' FROM dual", 'oracle').kind).toBe('readonly')
+  })
+
+  it('recognizes locking reads under the Oracle dialect too', () => {
+    const d = classifySql('SELECT * FROM t FOR UPDATE', 'oracle')
+    expect(d.kind).toBe('requires_approval')
+    if (d.kind === 'requires_approval') expect(d.operation).toBe('lock')
+  })
+
+  it('routes SQLite positive writes through requires_approval', () => {
+    const d = classifySql('INSERT INTO t VALUES (1)', 'sqlite')
+    expect(d.kind).toBe('requires_approval')
+    if (d.kind === 'requires_approval') expect(d.operation).toBe('dml')
+  })
+})

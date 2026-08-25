@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@logging/index', () => ({
   createLogger: vi.fn(() => ({
@@ -13,6 +13,10 @@ const requestIdentitiesMessage = Buffer.from([0, 0, 0, 1, 11])
 const emptyIdentitiesResponse = Buffer.from([0, 0, 0, 5, 12, 0, 0, 0, 0])
 
 describe('Chaterm SSHAgent transport security', () => {
+  beforeEach(() => {
+    delete process.env.SSH_AUTH_SOCK
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
     vi.resetModules()
