@@ -24,7 +24,6 @@ import { electronApp } from '@electron-toolkit/utils'
 import { is } from '@electron-toolkit/utils'
 import * as fs from 'fs/promises'
 import { getCurrentUserId, setMainWindowWebContents } from './storage/db/connection'
-import { migrateCnUserDataOnFirstLaunch } from './storage/editionDataMigration'
 
 // Set environment variables
 process.env.IS_DEV = is.dev ? 'true' : 'false'
@@ -325,14 +324,9 @@ app.whenReady().then(async () => {
       }
     })()
   }
-  // Set edition-specific AppUserModelId for Windows taskbar grouping and process identification
-  const edition = getEdition()
-  const appUserModelId = edition === 'global' ? 'ai.chaterm.global' : 'ai.chaterm.cn'
+  // Set AppUserModelId for Windows taskbar grouping and process identification
+  const appUserModelId = 'ai.chaterm'
   electronApp.setAppUserModelId(appUserModelId)
-
-  // Start CN user data migration in parallel (usually a no-op, but can be
-  // slow on first launch of global edition due to process detection)
-  const migrationPromise = migrateCnUserDataOnFirstLaunch().catch((err) => logger.error('CN migration failed', { error: err }))
 
   if (process.platform === 'darwin') {
     app.dock?.setIcon(join(__dirname, '../../resources/icon.png'))
@@ -538,7 +532,6 @@ app.whenReady().then(async () => {
 
   // Ensure parallel tasks complete before marking ready
   if (ffmpegVerification) await ffmpegVerification
-  await migrationPromise
 
   // Function to initialize telemetry setting
   const initializeTelemetrySetting = async () => {
@@ -1181,8 +1174,7 @@ function setupIPC(): void {
         }
 
         if (kbSearchEnabled !== false) {
-          const edition = getEdition()
-          const region = edition === 'cn' ? 'cn' : 'global'
+          const region = 'cn'
 
           // Get API credentials from user's model configuration
           const state = await getAllExtensionState()

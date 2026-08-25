@@ -73,7 +73,7 @@ const mockEditionConfig: {
   displayName: string
 } = {
   edition: 'cn',
-  displayName: 'Chaterm CN'
+  displayName: 'Chaterm'
 }
 
 vi.mock('@/utils/edition', () => {
@@ -126,7 +126,7 @@ describe('About Component', () => {
     setActivePinia(pinia)
 
     // Reset edition config to default (CN)
-    mockEditionConfig.displayName = 'Chaterm CN'
+    mockEditionConfig.displayName = 'Chaterm'
 
     // Setup window.api mock
     global.window = global.window || ({} as Window & typeof globalThis)
@@ -187,7 +187,7 @@ describe('About Component', () => {
 
       const title = wrapper.find('.about-title')
       expect(title.exists()).toBe(true)
-      expect(title.text()).toBe('Chaterm CN')
+      expect(title.text()).toBe('Chaterm')
     })
 
     it('should display current version', async () => {
@@ -206,7 +206,7 @@ describe('About Component', () => {
 
       const copyright = wrapper.find('.about-description:last-child')
       expect(copyright.exists()).toBe(true)
-      expect(copyright.text()).toContain('Chaterm CN')
+      expect(copyright.text()).toContain('Chaterm')
       expect(copyright.text()).toContain('All rights reserved')
     })
 
@@ -929,21 +929,8 @@ describe('About Component', () => {
       expect(copyright.text()).toContain(currentYear.toString())
     })
 
-    it('should display correct displayName for CN edition', async () => {
-      // Reset to CN edition (default)
-      mockEditionConfig.displayName = 'Chaterm CN'
-
-      wrapper = createWrapper()
-      await nextTick()
-
-      const copyright = wrapper.find('.about-description:last-child')
-      expect(copyright.exists()).toBe(true)
-      expect(copyright.text()).toContain('Chaterm CN')
-      expect(copyright.text()).toContain('All rights reserved')
-    })
-
-    it('should display correct displayName for global edition', async () => {
-      // Change to global edition
+    it('should display correct displayName for the single edition', async () => {
+      // Reset to the single edition displayName (default)
       mockEditionConfig.displayName = 'Chaterm'
 
       wrapper = createWrapper()
@@ -952,11 +939,10 @@ describe('About Component', () => {
       const copyright = wrapper.find('.about-description:last-child')
       expect(copyright.exists()).toBe(true)
       expect(copyright.text()).toContain('Chaterm')
-      expect(copyright.text()).not.toContain('Chaterm CN')
       expect(copyright.text()).toContain('All rights reserved')
 
-      // Reset to CN for other tests
-      mockEditionConfig.displayName = 'Chaterm CN'
+      // Reset for other tests
+      mockEditionConfig.displayName = 'Chaterm'
     })
   })
 })

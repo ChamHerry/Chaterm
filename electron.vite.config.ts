@@ -10,7 +10,7 @@ import pkg from './package.json'
 const publicDir = resolve('resources')
 const envDir = resolve('build')
 
-type Edition = 'cn' | 'global'
+type Edition = 'cn'
 
 interface EditionConfig {
   edition: Edition
@@ -39,19 +39,7 @@ const loadEditionConfig = (edition: Edition): EditionConfig => {
   }
 }
 
-const resolveEdition = (mode: string | undefined): Edition => {
-  if (process.env.APP_EDITION === 'cn' || process.env.APP_EDITION === 'global') {
-    return process.env.APP_EDITION
-  }
-
-  if (mode?.endsWith('.cn')) {
-    return 'cn'
-  }
-
-  if (mode?.endsWith('.global')) {
-    return 'global'
-  }
-
+const resolveEdition = (_mode: string | undefined): Edition => {
   return 'cn'
 }
 

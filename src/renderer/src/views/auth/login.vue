@@ -30,7 +30,7 @@
       </div>
       <div class="term_login_welcome">
         <span>{{ $t('login.welcome') }}</span>
-        <span style="color: #2a82e4; margin-left: 12px">{{ isChineseEdition() ? 'Chaterm CN' : $t('login.title') }}</span>
+        <span style="color: #2a82e4; margin-left: 12px">Chaterm</span>
       </div>
       <div class="term_login_input">
         <div class="yixin-login-section">
@@ -62,7 +62,6 @@ import { shortcutService } from '@/services/shortcutService'
 import { setCurrentYixinSession, type YixinSessionUserInfo } from '@/services/yixinSessionService'
 import config from '@renderer/config'
 import { useI18n } from 'vue-i18n'
-import { isChineseEdition } from '@/utils/edition'
 import TitleBar from '@views/components/Header/titleBar.vue'
 
 const logger = createRendererLogger('auth.login')

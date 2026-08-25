@@ -20,7 +20,7 @@ declare const __APP_INFO__: {
 
 // Edition configuration injected at build time from build/edition-config/*.json
 declare const __EDITION_CONFIG__: {
-  edition: 'cn' | 'global'
+  edition: 'cn'
   displayName: string
   auth: {
     yixinSsoBaseUrl: string

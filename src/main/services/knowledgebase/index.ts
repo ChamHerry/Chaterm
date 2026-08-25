@@ -812,12 +812,10 @@ export function registerKnowledgeBaseHandlers(): void {
       }
       if (resolvedEnabled) {
         const { getCurrentUserId } = await import('../../storage/db/connection')
-        const { getEdition } = await import('../../config/edition')
         const { getAllExtensionState } = await import('../../agent/core/storage/state')
         const uid = getCurrentUserId()
         if (!uid) return { success: false, error: 'User not logged in' }
-        const edition = getEdition()
-        const region = edition === 'cn' ? 'cn' : 'global'
+        const region = 'cn'
 
         // Get API credentials from user's model configuration
         const state = await getAllExtensionState()

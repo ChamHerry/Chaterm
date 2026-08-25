@@ -1,4 +1,4 @@
-export type Edition = 'cn' | 'global'
+export type Edition = 'cn'
 
 export interface EditionConfig {
   edition: Edition
@@ -17,11 +17,9 @@ declare const __EDITION_CONFIG__: EditionConfig
 
 export const getEditionConfig = (): EditionConfig => __EDITION_CONFIG__
 
-export const APP_EDITION: Edition = __EDITION_CONFIG__.edition
+export const APP_EDITION: Edition = 'cn'
 
-export const isChineseEdition = (): boolean => APP_EDITION === 'cn'
-
-export const isGlobalEdition = (): boolean => APP_EDITION === 'global'
+export const isChineseEdition = (): boolean => true
 
 export const getDefaultLanguage = (): string => import.meta.env.RENDERER_DEFAULT_LANGUAGE || __EDITION_CONFIG__.defaults.language
 

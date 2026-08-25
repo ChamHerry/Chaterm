@@ -15,12 +15,11 @@ import 'ant-design-vue/dist/reset.css'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 import { notification } from 'ant-design-vue'
 import { shortcutService } from './services/shortcutService'
-import { APP_EDITION } from './utils/edition'
 import { createRendererLogger } from './utils/logger'
 import { useEditorConfigStore } from './store/editorConfig'
 
-// Set document title based on edition
-document.title = APP_EDITION === 'cn' ? 'Chaterm CN' : 'Chaterm'
+// Set document title
+document.title = 'Chaterm'
 
 // Set global notification top position
 notification.config({

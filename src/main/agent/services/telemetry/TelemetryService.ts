@@ -12,7 +12,7 @@ import os from 'os'
 import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
-import { getUserDataPath, getEdition, isGlobalEdition } from '../../../config/edition'
+import { getUserDataPath } from '../../../config/edition'
 const logger = createLogger('agent')
 
 /**
@@ -146,25 +146,13 @@ class PostHogClient {
   }
 
   /**
-   * Captures a telemetry event if telemetry is enabled
-   * Only sends data to PostHog for the global edition
+   * Captures a telemetry event.
+   * Telemetry is disabled for the single YiXin edition build (it was
+   * previously gated to the global edition, which no longer exists).
    * @param event The event to capture with its properties
    */
-  public capture(event: { event: string; properties?: any }): void {
-    if (this.telemetryEnabled && isGlobalEdition()) {
-      const propertiesWithVersion = {
-        ...event.properties,
-        extension_version: this.version,
-        is_dev: process.env.IS_DEV,
-        edition: getEdition()
-      }
-      logger.info('[PostHog] Capturing event properties', { value: propertiesWithVersion })
-      this.client.capture({
-        distinctId: this.distinctId,
-        event: event.event,
-        properties: propertiesWithVersion
-      })
-    }
+  public capture(_event: { event: string; properties?: any }): void {
+    // Intentionally a no-op: this edition build does not send telemetry.
   }
 
   // User events

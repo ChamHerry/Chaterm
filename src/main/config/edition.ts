@@ -1,6 +1,6 @@
 /**
  * Edition configuration module for main process
- * Loads and manages edition-specific configuration (CN/Global)
+ * Loads and manages the single edition configuration (YiXin/CN)
  *
  * IMPORTANT: All edition-specific URLs are defined in build/edition-config/*.json
  * This is the single source of truth - do NOT hardcode URLs elsewhere
@@ -10,7 +10,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 const logger = createLogger('config')
 
-export type Edition = 'cn' | 'global'
+export type Edition = 'cn'
 
 export interface EditionConfig {
   edition: Edition
@@ -30,35 +30,23 @@ let userDataPath: string | null = null
 let userDataPathInitialized = false
 
 /**
- * Get current edition from environment variable
- * Default to 'cn' per spec 3.6
+ * Get current edition. The project ships a single edition.
  */
 export function getEdition(): Edition {
-  return (process.env.APP_EDITION as Edition) || 'cn'
+  return 'cn'
 }
 
 /**
  * Check if current edition is Chinese edition
  */
 export function isChineseEdition(): boolean {
-  return getEdition() === 'cn'
+  return true
 }
 
 /**
- * Check if current edition is Global edition
- */
-export function isGlobalEdition(): boolean {
-  return getEdition() === 'global'
-}
-
-/**
- * Initialize the userData path based on edition.
+ * Initialize the userData path.
  * This function MUST be called at the very beginning of the app startup,
  * before any other module tries to access userData.
- *
- * Path mapping:
- * - CN edition:     ~/Library/Application Support/chaterm (default, backward compatible)
- * - Global edition: ~/Library/Application Support/chaterm-global
  */
 export function initUserDataPath(): void {
   if (userDataPathInitialized) {
@@ -66,18 +54,7 @@ export function initUserDataPath(): void {
   }
 
   try {
-    const edition = getEdition()
-
-    if (edition === 'global') {
-      // Global edition uses a separate directory
-      const basePath = app.getPath('appData')
-      const customPath = path.join(basePath, 'chaterm-global')
-      app.setPath('userData', customPath)
-      userDataPath = customPath
-    } else {
-      // CN edition uses the default 'chaterm' directory (backward compatible)
-      userDataPath = app.getPath('userData')
-    }
+    userDataPath = app.getPath('userData')
   } catch (error) {
     // Fallback for test environment or non-Electron environment
     userDataPath = path.join(process.cwd(), 'test_data')
@@ -98,19 +75,17 @@ export function getUserDataPath(): string {
 }
 
 /**
- * Get protocol prefix based on edition
- * Returns 'chaterm-cn://' for Chinese edition, 'chaterm://' for others
+ * Get protocol prefix
  */
 export function getProtocolPrefix(): string {
-  return isChineseEdition() ? 'chaterm-cn://' : 'chaterm://'
+  return 'chaterm://'
 }
 
 /**
- * Get protocol name (without ://) based on edition
- * Returns 'chaterm-cn' for Chinese edition, 'chaterm' for others
+ * Get protocol name (without ://)
  */
 export function getProtocolName(): string {
-  return isChineseEdition() ? 'chaterm-cn' : 'chaterm'
+  return 'chaterm'
 }
 
 /**

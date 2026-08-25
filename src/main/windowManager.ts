@@ -2,7 +2,6 @@ import { BrowserWindow, shell, session, ipcMain } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { getEdition } from './config/edition'
 
 /**
  * Result of creating the main window.
@@ -24,9 +23,8 @@ export interface WindowCreationResult {
  * in parallel.
  */
 export async function createMainWindow(onCookieUrlChange?: (url: string) => void, shouldPreventClose?: () => boolean): Promise<WindowCreationResult> {
-  // Set window title based on edition
-  const edition = getEdition()
-  const windowTitle = edition === 'cn' ? 'Chaterm CN' : 'Chaterm'
+  // Set window title
+  const windowTitle = 'Chaterm'
 
   const mainWindow = new BrowserWindow({
     width: 1344,

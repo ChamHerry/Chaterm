@@ -1,4 +1,4 @@
-name: Build Windows CN
+name: Build Windows
 
 on:
   # Manual trigger
@@ -25,12 +25,11 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'electron-builder.yml'
-      - 'electron-builder.cn.yml'
       - 'electron.vite.config.ts'
-      - '.github/workflows/build-win-cn.yml'
+      - '.github/workflows/build-win.yml'
 
 concurrency:
-  group: build-win-cn-${{ github.ref }}
+  group: build-win-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -68,21 +67,20 @@ jobs:
       - name: Check release notes
         run: npm run check:release-notes
 
-      - name: Build CN edition
-        run: npm run build:cn
+      - name: Build production bundles
+        run: npm run build
         env:
           NODE_OPTIONS: --max-old-space-size=8192
-          APP_EDITION: cn
 
       - name: Package Windows installer
-        run: npx electron-builder --win --config electron-builder.cn.yml --publish never
+        run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify packaged artifacts
         shell: pwsh
         run: |
-          $unpackedDir = "dist\cn\win-unpacked"
+          $unpackedDir = "dist\win-unpacked"
           if (-not (Test-Path $unpackedDir)) {
             Write-Error "win-unpacked directory not found"
             exit 1
@@ -124,15 +122,15 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chaterm-cn-win-x64-installer
-          path: dist/cn/*-cn-setup-*.exe
+          name: chaterm-win-x64-installer
+          path: dist/*setup-*.exe
           retention-days: 14
           if-no-files-found: error
 
       - name: Upload blockmap artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chaterm-cn-win-x64-blockmap
-          path: dist/cn/*-cn-setup-*.exe.blockmap
+          name: chaterm-win-x64-blockmap
+          path: dist/*setup-*.exe.blockmap
           retention-days: 14
           if-no-files-found: warn

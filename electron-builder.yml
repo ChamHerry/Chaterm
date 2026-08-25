@@ -61,6 +61,9 @@ extraResources:
   - from: 'resources/preinstalled-plugins/'
     to: 'preinstalled-plugins/'
     filter: '**/*'
+  - from: 'build/edition-config/'
+    to: 'edition-config/'
+    filter: '**/*.json'
 asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/**
@@ -69,11 +72,19 @@ asarUnpack:
 icon: resources/icon.ico
 win:
   executableName: Chaterm
+  artifactName: ${name}-${version}-setup-${arch}.${ext}
+  protocols:
+    - name: Chaterm
+      schemes:
+        - chaterm
 nsis:
   artifactName: ${name}-${version}-setup-${arch}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  guid: ai.chaterm.app
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 mac:
   icon: resources/icon.icns
   target:
@@ -85,6 +96,11 @@ mac:
       arch:
         - x64
         - arm64
+  artifactName: ${name}-${version}-macos-${arch}.${ext}
+  protocols:
+    - name: Chaterm
+      schemes:
+        - chaterm
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
@@ -97,9 +113,12 @@ linux:
   target:
     - AppImage
     - deb
+  executableName: chaterm
   maintainer: chaterm.ai
   category: Utility
   artifactName: ${name}-${version}-linux-${arch}.${ext}
+deb:
+  packageName: chaterm
 npmRebuild: true
 # Auto update is temporarily disabled for YiXin-only builds.
 electronDownload:

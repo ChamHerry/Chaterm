@@ -1,6 +1,6 @@
 {
   "edition": "cn",
-  "displayName": "Chaterm CN",
+  "displayName": "Chaterm",
   "auth": {
     "yixinSsoBaseUrl": "https://sso.teamshub.com",
     "yixinLoginPath": "/login",

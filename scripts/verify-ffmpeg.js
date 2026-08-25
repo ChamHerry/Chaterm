@@ -4,7 +4,7 @@ const crypto = require('crypto')
 
 // Electron 41.5.2 win32-x64 ffmpeg.dll.
 // Keep this in sync with src/main/index.ts and the Windows package built by
-// scripts/docker-build-win-cn.sh.
+// scripts/docker-build-win.sh.
 const KNOWN_WINDOWS_X64_FFMPEG_SHA256 = '9E6FD0CFB118760559137D85CB5F24C26F09182AB5758C4F93CF2290BE401B6E'
 
 function getArgValue(flag) {

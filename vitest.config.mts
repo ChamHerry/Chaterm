@@ -8,7 +8,7 @@ import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers'
 import AutoImport from 'unplugin-auto-import/vite'
 import pkg from './package.json'
 
-// Load edition config for tests (default to 'cn' edition)
+// Load edition config for tests (single 'cn' edition)
 const loadEditionConfig = (edition: string) => {
   const configPath = resolve(`build/edition-config/${edition}.json`)
   try {
@@ -20,12 +20,12 @@ const loadEditionConfig = (edition: string) => {
       edition,
       displayName: 'Chaterm',
       auth: { yixinSsoBaseUrl: '', yixinLoginPath: '/login', yixinValidatePath: '/serviceValidate' },
-      defaults: { language: 'en-US' }
+      defaults: { language: 'zh-CN' }
     }
   }
 }
 
-const edition = process.env.APP_EDITION || 'cn'
+const edition = 'cn'
 const editionConfig = loadEditionConfig(edition)
 
 // Shared defines for renderer tests

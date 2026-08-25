@@ -17,7 +17,7 @@ ELECTRON_CACHE_VOLUME="${ELECTRON_CACHE_VOLUME:-${VOLUME_PREFIX}_electron_cache}
 ELECTRON_BUILDER_CACHE_VOLUME="${ELECTRON_BUILDER_CACHE_VOLUME:-${VOLUME_PREFIX}_electron_builder_cache}"
 
 log() {
-  printf '\033[1;34m[win-cn-docker]\033[0m %s\n' "$*"
+  printf '\033[1;34m[win-docker]\033[0m %s\n' "$*"
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -32,9 +32,9 @@ fi
 
 if [[ "$CLEAN_DIST" != "0" ]]; then
   log "Cleaning previous Windows CN build artifacts"
-  rm -rf dist/cn/win-unpacked
-  rm -f dist/cn/*-cn-setup-*.exe dist/cn/*-cn-setup-*.exe.blockmap
-  rm -f dist/cn/*-cn-portable-*.exe dist/cn/*.nsis.7z dist/cn/*.nsis.7z.blockmap
+  rm -rf dist/win-unpacked
+  rm -f dist/*-setup-*.exe dist/*-setup-*.exe.blockmap
+  rm -f dist/*-portable-*.exe dist/*.nsis.7z dist/*.nsis.7z.blockmap
 fi
 
 log "Using Docker image: ${DOCKER_IMAGE} (${DOCKER_PLATFORM})"
@@ -55,7 +55,7 @@ else
 fi
 
 npm run check:release-notes
-npm run build:cn
+npm run build
 
 ELECTRON_VERSION="$(node -p "require('./node_modules/electron/package.json').version")"
 echo "Installing Windows x64 better-sqlite3 prebuild for Electron ${ELECTRON_VERSION}"
@@ -64,14 +64,14 @@ echo "Installing Windows x64 better-sqlite3 prebuild for Electron ${ELECTRON_VER
   npx prebuild-install -r electron -t "${ELECTRON_VERSION}" --platform win32 --arch x64 --force
 )
 
-# Build the Windows CN portable executable. On Apple Silicon Docker runs the
+# Build the Windows portable executable. On Apple Silicon Docker runs the
 # linux/amd64 builder image through emulation, and Wine crashes when the default
 # NSIS installer path runs Windows helper executables for resource editing and
 # uninstaller generation. The portable target plus disabled executable resource
 # editing avoids that Wine/QEMU path while still producing a Windows .exe.
-npx electron-builder --win portable --config electron-builder.cn.yml --publish never -c.win.signAndEditExecutable=false
+npx electron-builder --win portable --publish never -c.win.signAndEditExecutable=false
 
-node scripts/verify-ffmpeg.js --file dist/cn/win-unpacked/ffmpeg.dll
+node scripts/verify-ffmpeg.js --file dist/win-unpacked/ffmpeg.dll
 
 node <<'NODE'
 const fs = require('fs')
@@ -79,8 +79,8 @@ const path = require('path')
 const crypto = require('crypto')
 const asar = require('@electron/asar')
 
-const archive = 'dist/cn/win-unpacked/resources/app.asar'
-const unpacked = 'dist/cn/win-unpacked/resources/app.asar.unpacked'
+const archive = 'dist/win-unpacked/resources/app.asar'
+const unpacked = 'dist/win-unpacked/resources/app.asar.unpacked'
 const pkg = JSON.parse(asar.extractFile(archive, 'package.json').toString())
 const main = asar.extractFile(archive, 'out/main/index.js').toString()
 
@@ -96,7 +96,7 @@ function assertMZ(file) {
 assert(pkg.dependencies?.oracledb, 'oracledb is missing from packaged package.json dependencies')
 assert(main.includes('import("oracledb")') || main.includes("import('oracledb')"), 'main bundle does not import oracledb')
 
-const ffmpegPath = 'dist/cn/win-unpacked/ffmpeg.dll'
+const ffmpegPath = 'dist/win-unpacked/ffmpeg.dll'
 const ffmpegHash = crypto.createHash('sha256').update(fs.readFileSync(ffmpegPath)).digest('hex').toUpperCase()
 assert(main.includes(ffmpegHash), `main bundle does not contain packaged ffmpeg.dll hash: ${ffmpegHash}`)
 
@@ -110,15 +110,15 @@ assertMZ(path.join(oracleReleaseDir, oracleWinBinary))
 console.log('Packaged dependency verification passed')
 NODE
 
-mapfile -t build_artifacts < <(find dist/cn -maxdepth 1 -type f \( -name '*-cn-setup-*.exe' -o -name '*-cn-portable-*.exe' \) -print | sort)
+mapfile -t build_artifacts < <(find dist -maxdepth 1 -type f \( -name '*-setup-*.exe' -o -name '*-portable-*.exe' \) -print | sort)
 if [[ "${#build_artifacts[@]}" -eq 0 ]]; then
-  echo "No Windows CN exe artifact was produced in dist/cn." >&2
+  echo "No Windows exe artifact was produced in dist." >&2
   exit 1
 fi
 ls -lh "${build_artifacts[@]}"
 
 if [[ -n "${HOST_UID:-}" && -n "${HOST_GID:-}" ]]; then
-  chown -R "${HOST_UID}:${HOST_GID}" dist/cn out 2>/dev/null || true
+  chown -R "${HOST_UID}:${HOST_GID}" dist out 2>/dev/null || true
 fi
 EOS
 )
@@ -137,4 +137,4 @@ docker run --rm --platform "$DOCKER_PLATFORM" \
   "$DOCKER_IMAGE" \
   /bin/bash -lc "$container_script"
 
-log "Done. Windows CN exe is in dist/cn/"
+log "Done. Windows exe is in dist/"
