@@ -17,7 +17,8 @@ export function createProxyAgent(config?: ProxyConfig): Agent | undefined {
   if (!config) return undefined
   const { type, host, port, enableProxyIdentity, username, password } = config
   const auth = enableProxyIdentity && username && password ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@` : ''
-  const url = `http://${auth}${host}:${port}`
+  const scheme = type === 'HTTPS' ? 'https' : type === 'SOCKS4' ? 'socks4' : type === 'SOCKS5' ? 'socks5' : 'http'
+  const url = `${scheme}://${auth}${host}:${port}`
 
   switch (type) {
     case 'HTTP':
